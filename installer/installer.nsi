@@ -30,9 +30,8 @@ SetCompressorDictSize 64
 ;--------------------------------
 ; MUI 设置
 !define MUI_ABORTWARNING
-; 注意：如需自定义图标，取消下面两行注释并提供 resources\claude.ico
-; !define MUI_ICON "resources\claude.ico"
-; !define MUI_UNICON "resources\claude.ico"
+!define MUI_ICON "resources\claude.ico"
+!define MUI_UNICON "resources\claude.ico"
 
 ; 欢迎页面
 !insertmacro MUI_PAGE_WELCOME
