@@ -10,6 +10,7 @@
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\ClaudeCodeWin.exe"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
+!define PRODUCT_EXE "ClaudeCodeWin.exe"
 
 ;--------------------------------
 ; Compression
@@ -62,10 +63,59 @@ ShowUnInstDetails show
 RequestExecutionLevel admin
 
 ;--------------------------------
+; Functions
+
+; Check if application is running and kill it
+Function CheckAndKillProcess
+    ; Try to find and kill the process
+    nsExec::ExecToLog 'taskkill /F /IM ${PRODUCT_EXE}'
+    ; Wait a moment for process to terminate
+    Sleep 500
+FunctionEnd
+
+; Uninstall version - check and kill process
+Function un.CheckAndKillProcess
+    nsExec::ExecToLog 'taskkill /F /IM ${PRODUCT_EXE}'
+    Sleep 500
+FunctionEnd
+
+;--------------------------------
+; Installer init
+Function .onInit
+    ; Check if application is running
+    FindWindow $0 "" "Claude Code for Windows"
+    ${If} $0 != 0
+        MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION \
+            "Claude Code for Windows is currently running.$\n$\nClick OK to close it and continue installation, or Cancel to abort." \
+            IDOK kill_app
+        Abort
+        kill_app:
+            Call CheckAndKillProcess
+    ${EndIf}
+FunctionEnd
+
+; Uninstaller init
+Function un.onInit
+    FindWindow $0 "" "Claude Code for Windows"
+    ${If} $0 != 0
+        MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION \
+            "Claude Code for Windows is currently running.$\n$\nClick OK to close it and continue uninstallation, or Cancel to abort." \
+            IDOK un_kill_app
+        Abort
+        un_kill_app:
+            Call un.CheckAndKillProcess
+    ${EndIf}
+FunctionEnd
+
+;--------------------------------
 ; Install section
 
 Section "Main Program" SEC_MAIN
     SectionIn RO
+
+    ; Kill process again just in case
+    Call CheckAndKillProcess
+
     SetOutPath "$INSTDIR"
 
     ; Copy main program files
@@ -106,6 +156,9 @@ SectionEnd
 ;--------------------------------
 ; Uninstall section
 Section "Uninstall"
+    ; Kill process before uninstall
+    Call un.CheckAndKillProcess
+
     ; Delete program files
     RMDir /r "$INSTDIR"
 
