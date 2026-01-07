@@ -181,24 +181,34 @@ jobs:
             artifacts/ClaudeCodeWin-framework-dependent/*.zip
             artifacts/ClaudeCodeWin-installer/*.exe
           body: |
-            ## Claude Code for Windows ${{ needs.build.outputs.version }}
+            ## Claude Code for Windows v${{ needs.build.outputs.version }}
 
             ### 下载说明
 
             | 文件 | 说明 |
             |------|------|
-            | `ClaudeCodeWin-Setup-*.exe` | **推荐** - 完整安装程序，包含 Node.js 运行时 |
-            | `*-portable.zip` | 便携版，自包含所有依赖，解压即用 |
-            | `*-framework-dependent.zip` | 轻量版，需要系统已安装 .NET 8 Runtime |
+            | `ClaudeCodeWin-Setup-*.exe` | **推荐** - 完整安装程序，内置 Node.js 运行时 |
+            | `*-portable.zip` | 便携版，自包含所有依赖，解压即用（需自行安装 Node.js） |
+            | `*-framework-dependent.zip` | 轻量版，需要系统已安装 .NET 8 Runtime 和 Node.js |
 
             ### 系统要求
 
             - Windows 10/11 (64位)
-            - Node.js 18+ (安装程序可自动安装)
+            - 安装程序版本已内置 Node.js，无需额外安装
 
             ### 首次使用
 
-            1. 安装或解压程序
+            1. 下载并运行安装程序
             2. 启动 Claude Code for Windows
-            3. 点击 **设置** 配置 API 密钥
-            4. 选择工作目录，点击启动
+            3. 程序会自动安装 Claude Code CLI（使用国内镜像加速）
+            4. 点击 **设置** 配置 API 密钥
+            5. 选择工作目录，点击启动
+
+            ### 功能特性
+
+            - 内置 Node.js 运行时
+            - 自动安装 Claude Code CLI
+            - 斜杠命令快捷按钮
+            - 图片上传和粘贴支持
+            - 环境变量可视化配置
+            - JSON 配置导入
