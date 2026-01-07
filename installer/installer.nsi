@@ -73,11 +73,9 @@ Section "主程序" SEC_MAIN
     ; 复制主程序文件
     File /r "publish\*.*"
 
-    ; 复制内置的 Node.js（如果存在）
-    IfFileExists "nodejs\node.exe" 0 skip_nodejs
-        SetOutPath "$INSTDIR\nodejs"
-        File /r "nodejs\*.*"
-    skip_nodejs:
+    ; 复制内置的 Node.js（必须包含）
+    SetOutPath "$INSTDIR\nodejs"
+    File /r "nodejs\*.*"
 
     ; 创建数据目录
     CreateDirectory "$APPDATA\ClaudeCodeWin"
