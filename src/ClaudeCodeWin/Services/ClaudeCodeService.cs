@@ -421,6 +421,12 @@ namespace ClaudeCodeWin.Services
 
                     if (process.ExitCode == 0)
                     {
+                        // 验证安装，获取版本号
+                        var version = await GetClaudeVersionAsync(nodeDir, onOutput);
+                        if (!string.IsNullOrEmpty(version))
+                        {
+                            return (true, $"Claude Code 安装成功！版本: {version}");
+                        }
                         return (true, "Claude Code 安装成功！");
                     }
                     else
@@ -434,6 +440,88 @@ namespace ClaudeCodeWin.Services
             {
                 return (false, $"安装失败: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 获取 Claude Code 版本
+        /// </summary>
+        private static async Task<string?> GetClaudeVersionAsync(string? nodeDir, Action<string>? onOutput = null)
+        {
+            try
+            {
+                var claudePath = FindClaudeCodePathStatic(nodeDir);
+                if (string.IsNullOrEmpty(claudePath))
+                {
+                    onOutput?.Invoke("⚠ 未找到 claude 命令");
+                    return null;
+                }
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = claudePath,
+                    Arguments = "--version",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8
+                };
+
+                if (!string.IsNullOrEmpty(nodeDir))
+                {
+                    startInfo.EnvironmentVariables["PATH"] = nodeDir + Path.PathSeparator +
+                        Environment.GetEnvironmentVariable("PATH");
+                }
+
+                using var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    var output = await process.StandardOutput.ReadToEndAsync();
+                    await process.WaitForExitAsync();
+
+                    var version = output.Trim();
+                    if (!string.IsNullOrEmpty(version))
+                    {
+                        onOutput?.Invoke($"✓ claude --version: {version}");
+                        return version;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                onOutput?.Invoke($"⚠ 验证失败: {ex.Message}");
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 静态方法查找 Claude Code 路径
+        /// </summary>
+        private static string? FindClaudeCodePathStatic(string? nodeDir)
+        {
+            var possiblePaths = new List<string>();
+
+            // npm 全局目录（在 node 目录下）
+            if (!string.IsNullOrEmpty(nodeDir))
+            {
+                possiblePaths.Add(Path.Combine(nodeDir, "claude.cmd"));
+                possiblePaths.Add(Path.Combine(nodeDir, "claude"));
+            }
+
+            // npm 全局目录
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            possiblePaths.Add(Path.Combine(appData, "npm", "claude.cmd"));
+            possiblePaths.Add(Path.Combine(appData, "npm", "claude"));
+
+            // 应用程序目录
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            possiblePaths.Add(Path.Combine(appDir, "nodejs", "claude.cmd"));
+
+            // 安装目录
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "claude.cmd"));
+
+            return possiblePaths.FirstOrDefault(File.Exists);
         }
 
         public void Dispose()
