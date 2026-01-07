@@ -105,10 +105,11 @@ namespace ClaudeCodeWin
 
             AppendToTerminal("\n", Colors.White);
 
-            // 检查 API 密钥
-            if (string.IsNullOrEmpty(_envService.Config.ApiKey))
+            // 检查 API 密钥或认证令牌（只要设置其中之一即可）
+            if (string.IsNullOrEmpty(_envService.Config.ApiKey) &&
+                string.IsNullOrEmpty(_envService.Config.AuthToken))
             {
-                AppendToTerminal("⚠ 提示: 未配置 API 密钥，请点击 [⚙ 设置] 配置\n\n", Colors.Yellow);
+                AppendToTerminal("⚠ 提示: 未配置认证信息，请点击 [⚙ 设置] 配置 API 密钥或认证令牌\n\n", Colors.Yellow);
             }
 
             AppendToTerminal("点击 [▶ 启动] 按钮开始使用 Claude Code\n", Colors.White);

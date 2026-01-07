@@ -149,46 +149,26 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 查找 Claude Code 可执行文件路径
+        /// 查找 Claude Code 可执行文件路径（只使用内置路径）
         /// </summary>
         private string? FindClaudeCodePath()
         {
-            // 优先使用配置的路径
-            var customPath = GetConfiguredPath();
-            if (!string.IsNullOrEmpty(customPath) && File.Exists(customPath))
-            {
-                return customPath;
-            }
-
-            // Windows 上通常在 npm 全局目录
             var possiblePaths = new List<string>();
 
-            // npm 全局目录
+            // 应用程序目录下的内置 Claude（优先）
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            possiblePaths.Add(Path.Combine(appDir, "nodejs", "claude.cmd"));
+            possiblePaths.Add(Path.Combine(appDir, "nodejs", "claude"));
+
+            // 安装目录下的内置 Claude
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "claude.cmd"));
+            possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "claude"));
+
+            // npm 全局目录（使用内置 npm 安装的位置）
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             possiblePaths.Add(Path.Combine(appData, "npm", "claude.cmd"));
             possiblePaths.Add(Path.Combine(appData, "npm", "claude"));
-
-            // 用户本地目录
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            possiblePaths.Add(Path.Combine(localAppData, "npm", "claude.cmd"));
-            possiblePaths.Add(Path.Combine(localAppData, "npm", "claude"));
-
-            // 程序安装目录（我们的安装器放置的位置）
-            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "node_modules", ".bin", "claude.cmd"));
-            possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "node_modules", ".bin", "claude"));
-
-            // 在 PATH 中查找
-            var pathEnv = Environment.GetEnvironmentVariable("PATH");
-            if (!string.IsNullOrEmpty(pathEnv))
-            {
-                foreach (var pathDir in pathEnv.Split(Path.PathSeparator))
-                {
-                    possiblePaths.Add(Path.Combine(pathDir, "claude.cmd"));
-                    possiblePaths.Add(Path.Combine(pathDir, "claude"));
-                    possiblePaths.Add(Path.Combine(pathDir, "claude.exe"));
-                }
-            }
 
             return possiblePaths.FirstOrDefault(File.Exists);
         }
@@ -207,34 +187,54 @@ namespace ClaudeCodeWin.Services
             return null;
         }
 
+        /// <summary>
+        /// 设置内置 Node.js 到 PATH（只使用内置路径）
+        /// </summary>
         private void EnsureNodeInPath(ProcessStartInfo startInfo)
         {
-            var currentPath = startInfo.EnvironmentVariables["PATH"] ?? "";
-
             var nodePaths = new List<string>();
 
-            // 常见的 Node.js 安装路径
+            // 应用程序目录下的内置 Node.js（优先）
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            nodePaths.Add(Path.Combine(appDir, "nodejs"));
+
+            // 安装目录下的内置 Node.js
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-
-            nodePaths.Add(Path.Combine(programFiles, "nodejs"));
-            nodePaths.Add(Path.Combine(programFilesX86, "nodejs"));
-            nodePaths.Add(Path.Combine(appData, "npm"));
-            nodePaths.Add(Path.Combine(appData, "nvm"));
-
-            // 添加我们安装器内置的 Node.js
             nodePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs"));
 
+            // 构建新的 PATH，内置 Node.js 优先
+            var pathParts = new List<string>();
             foreach (var nodePath in nodePaths)
             {
-                if (Directory.Exists(nodePath) && !currentPath.Contains(nodePath))
+                if (Directory.Exists(nodePath))
                 {
-                    currentPath = nodePath + Path.PathSeparator + currentPath;
+                    pathParts.Add(nodePath);
                 }
             }
 
-            startInfo.EnvironmentVariables["PATH"] = currentPath;
+            // 添加 npm 全局目录
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var npmPath = Path.Combine(appData, "npm");
+            if (Directory.Exists(npmPath))
+            {
+                pathParts.Add(npmPath);
+            }
+
+            // 最后添加原有的 PATH（但排除其他 Node.js 路径）
+            var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
+            foreach (var part in currentPath.Split(Path.PathSeparator))
+            {
+                // 排除系统的 Node.js 路径，只使用我们的内置版本
+                if (!string.IsNullOrEmpty(part) &&
+                    !part.Contains("nodejs", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Contains("nvm", StringComparison.OrdinalIgnoreCase) &&
+                    !part.Contains("node_modules", StringComparison.OrdinalIgnoreCase))
+                {
+                    pathParts.Add(part);
+                }
+            }
+
+            startInfo.EnvironmentVariables["PATH"] = string.Join(Path.PathSeparator.ToString(), pathParts);
         }
 
         /// <summary>
