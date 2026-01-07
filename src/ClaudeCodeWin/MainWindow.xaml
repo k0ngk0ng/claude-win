@@ -192,12 +192,14 @@
 
                     <!-- 添加图片按钮 -->
                     <Button x:Name="AddImageButton" Grid.Column="0"
-                            Content="+" FontSize="18" FontWeight="Bold"
                             Width="36" Height="36"
                             Style="{StaticResource ModernButton}"
                             ToolTip="添加图片 (或使用 Ctrl+V 粘贴)"
                             Margin="0,0,8,0"
-                            Click="AddImageButton_Click"/>
+                            Click="AddImageButton_Click">
+                        <TextBlock Text="＋" FontSize="20" FontWeight="Bold"
+                                   VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Button>
 
                     <TextBox x:Name="InputBox"
                              Grid.Column="1"
