@@ -202,7 +202,12 @@
                         <TextBlock Text="调试配置" FontSize="16" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentColor}" Margin="0,0,0,12"/>
 
-                        <CheckBox x:Name="DebugCheck" Content="启用调试模式 (ANTHROPIC_DEBUG)"
+                        <CheckBox x:Name="GuiDebugCheck" Content="启用 GUI 调试输出"
+                                  Foreground="{StaticResource TextPrimary}" Margin="0,0,0,4"/>
+                        <TextBlock Text="显示执行命令、环境变量、进程退出码等调试信息"
+                                   Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="20,0,0,12"/>
+
+                        <CheckBox x:Name="DebugCheck" Content="启用 Claude Code 调试模式 (ANTHROPIC_DEBUG)"
                                   Foreground="{StaticResource TextPrimary}" Margin="0,0,0,12"/>
 
                         <StackPanel>

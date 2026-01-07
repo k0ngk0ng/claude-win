@@ -47,6 +47,7 @@ namespace ClaudeCodeWin.Views
             DisableUpdateCheckCheck.IsChecked = config.DisableUpdateCheck ?? false;
 
             // 调试配置
+            GuiDebugCheck.IsChecked = config.GuiDebug ?? false;
             DebugCheck.IsChecked = config.Debug ?? false;
 
             // 日志级别
@@ -192,6 +193,7 @@ namespace ClaudeCodeWin.Views
             config.DisableUpdateCheck = DisableUpdateCheckCheck.IsChecked == true ? true : null;
 
             // 调试配置
+            config.GuiDebug = GuiDebugCheck.IsChecked == true ? true : null;
             config.Debug = DebugCheck.IsChecked == true ? true : null;
 
             var selectedLogLevel = (LogLevelCombo.SelectedItem as ComboBoxItem)?.Content?.ToString();

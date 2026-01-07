@@ -125,6 +125,14 @@ namespace ClaudeCodeWin.Models
         [JsonProperty("SKIP_PERMISSIONS")]
         public bool? SkipPermissions { get; set; } = true;
 
+        // === GUI 调试配置 ===
+
+        /// <summary>
+        /// 启用 GUI 调试输出（显示执行命令、环境变量、退出码等）
+        /// </summary>
+        [JsonProperty("GUI_DEBUG")]
+        public bool? GuiDebug { get; set; }
+
         // === 自定义配置 ===
 
         /// <summary>

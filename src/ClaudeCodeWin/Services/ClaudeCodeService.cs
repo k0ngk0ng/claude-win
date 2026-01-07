@@ -34,6 +34,8 @@ namespace ClaudeCodeWin.Services
                 return false;
             }
 
+            var isDebug = _envService.Config.GuiDebug == true;
+
             var claudePath = FindClaudeCodePath();
             if (string.IsNullOrEmpty(claudePath))
             {
@@ -44,6 +46,16 @@ namespace ClaudeCodeWin.Services
             _workingDirectory = workingDirectory;
             _claudePath = claudePath;
             _isRunning = true;
+
+            if (isDebug)
+            {
+                OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
+                OnOutput?.Invoke($"[DEBUG] Claude Code 初始化");
+                OnOutput?.Invoke($"[DEBUG] Claude 路径: {_claudePath}");
+                OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
+                OnOutput?.Invoke($"[DEBUG] 跳过权限确认: {_envService.Config.SkipPermissions}");
+                OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
+            }
 
             OnOutput?.Invoke("Claude Code 已就绪，请输入您的问题...\n");
             return true;
@@ -62,6 +74,8 @@ namespace ClaudeCodeWin.Services
                 OnError?.Invoke("Claude Code 未启动");
                 return;
             }
+
+            var isDebug = _envService.Config.GuiDebug == true;
 
             try
             {
@@ -104,7 +118,43 @@ namespace ClaudeCodeWin.Services
                 // 使用 /C 执行命令后退出
                 startInfo.Arguments = $"/C \"\"{_claudePath}\" {claudeArgs}\"";
 
-                OnOutput?.Invoke($"[调试] 执行: {_claudePath} {claudeArgs}");
+                if (isDebug)
+                {
+                    OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
+                    OnOutput?.Invoke($"[DEBUG] Claude 路径: {_claudePath}");
+                    OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
+                    OnOutput?.Invoke($"[DEBUG] 完整命令: cmd.exe {startInfo.Arguments}");
+                    OnOutput?.Invoke($"[DEBUG] ───────────────────────────────────────────────");
+                    OnOutput?.Invoke($"[DEBUG] 环境变量:");
+
+                    // 显示相关环境变量
+                    foreach (string key in startInfo.EnvironmentVariables.Keys)
+                    {
+                        if (key.StartsWith("ANTHROPIC", StringComparison.OrdinalIgnoreCase) ||
+                            key.Equals("PATH", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var value = startInfo.EnvironmentVariables[key];
+                            if (key.Equals("PATH", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // PATH 太长，只显示前几个
+                                var paths = value?.Split(Path.PathSeparator).Take(5) ?? Array.Empty<string>();
+                                OnOutput?.Invoke($"[DEBUG]   {key}: {string.Join("; ", paths)}...");
+                            }
+                            else if (key.Contains("KEY", StringComparison.OrdinalIgnoreCase) ||
+                                     key.Contains("TOKEN", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // 隐藏敏感信息
+                                OnOutput?.Invoke($"[DEBUG]   {key}: ***");
+                            }
+                            else
+                            {
+                                OnOutput?.Invoke($"[DEBUG]   {key}: {value}");
+                            }
+                        }
+                    }
+                    OnOutput?.Invoke($"[DEBUG] ───────────────────────────────────────────────");
+                    OnOutput?.Invoke($"[DEBUG] 正在启动进程...");
+                }
 
                 _process = new Process { StartInfo = startInfo };
                 _process.EnableRaisingEvents = true;
@@ -128,28 +178,44 @@ namespace ClaudeCodeWin.Services
                     }
                 };
 
+                var startTime = DateTime.Now;
                 _process.Start();
                 _process.BeginOutputReadLine();
                 _process.BeginErrorReadLine();
 
+                if (isDebug)
+                {
+                    OnOutput?.Invoke($"[DEBUG] 进程已启动，PID: {_process.Id}");
+                }
+
                 // 等待进程完成，设置超时
                 var completed = await Task.Run(() => _process.WaitForExit(300000)); // 5分钟超时
+
+                var elapsed = DateTime.Now - startTime;
 
                 if (!completed)
                 {
                     OnError?.Invoke("执行超时（5分钟）");
                     try { _process.Kill(entireProcessTree: true); } catch { }
                 }
-                else
+                else if (isDebug)
                 {
-                    OnOutput?.Invoke($"[调试] 进程退出码: {_process.ExitCode}");
+                    OnOutput?.Invoke($"[DEBUG] ───────────────────────────────────────────────");
+                    OnOutput?.Invoke($"[DEBUG] 进程退出码: {_process.ExitCode}");
+                    OnOutput?.Invoke($"[DEBUG] 执行耗时: {elapsed.TotalSeconds:F2} 秒");
+                    OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
                 }
 
                 OnOutput?.Invoke(""); // 添加空行分隔
             }
             catch (Exception ex)
             {
-                OnError?.Invoke($"执行失败: {ex.Message}\n{ex.StackTrace}");
+                OnError?.Invoke($"执行失败: {ex.Message}");
+                if (isDebug)
+                {
+                    OnError?.Invoke($"[DEBUG] 异常类型: {ex.GetType().Name}");
+                    OnError?.Invoke($"[DEBUG] 堆栈跟踪:\n{ex.StackTrace}");
+                }
             }
         }
 
