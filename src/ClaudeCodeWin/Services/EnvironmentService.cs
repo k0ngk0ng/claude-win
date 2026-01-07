@@ -82,6 +82,15 @@ namespace ClaudeCodeWin.Services
                 case "ANTHROPIC_SMALL_FAST_MODEL":
                     if (string.IsNullOrEmpty(_config.SmallFastModel)) _config.SmallFastModel = value;
                     break;
+                case "ANTHROPIC_DEFAULT_HAIKU_MODEL":
+                    if (string.IsNullOrEmpty(_config.DefaultHaikuModel)) _config.DefaultHaikuModel = value;
+                    break;
+                case "ANTHROPIC_DEFAULT_SONNET_MODEL":
+                    if (string.IsNullOrEmpty(_config.DefaultSonnetModel)) _config.DefaultSonnetModel = value;
+                    break;
+                case "ANTHROPIC_DEFAULT_OPUS_MODEL":
+                    if (string.IsNullOrEmpty(_config.DefaultOpusModel)) _config.DefaultOpusModel = value;
+                    break;
                 case "ANTHROPIC_AUTH_TOKEN":
                     if (string.IsNullOrEmpty(_config.AuthToken)) _config.AuthToken = value;
                     break;

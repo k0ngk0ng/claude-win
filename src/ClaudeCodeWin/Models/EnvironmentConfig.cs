@@ -34,6 +34,24 @@ namespace ClaudeCodeWin.Models
         [JsonProperty("ANTHROPIC_SMALL_FAST_MODEL")]
         public string? SmallFastModel { get; set; }
 
+        /// <summary>
+        /// 默认 Haiku 模型
+        /// </summary>
+        [JsonProperty("ANTHROPIC_DEFAULT_HAIKU_MODEL")]
+        public string? DefaultHaikuModel { get; set; }
+
+        /// <summary>
+        /// 默认 Sonnet 模型
+        /// </summary>
+        [JsonProperty("ANTHROPIC_DEFAULT_SONNET_MODEL")]
+        public string? DefaultSonnetModel { get; set; }
+
+        /// <summary>
+        /// 默认 Opus 模型
+        /// </summary>
+        [JsonProperty("ANTHROPIC_DEFAULT_OPUS_MODEL")]
+        public string? DefaultOpusModel { get; set; }
+
         // === 认证配置 ===
 
         /// <summary>
@@ -124,6 +142,15 @@ namespace ClaudeCodeWin.Models
 
             if (!string.IsNullOrEmpty(SmallFastModel))
                 dict["ANTHROPIC_SMALL_FAST_MODEL"] = SmallFastModel;
+
+            if (!string.IsNullOrEmpty(DefaultHaikuModel))
+                dict["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = DefaultHaikuModel;
+
+            if (!string.IsNullOrEmpty(DefaultSonnetModel))
+                dict["ANTHROPIC_DEFAULT_SONNET_MODEL"] = DefaultSonnetModel;
+
+            if (!string.IsNullOrEmpty(DefaultOpusModel))
+                dict["ANTHROPIC_DEFAULT_OPUS_MODEL"] = DefaultOpusModel;
 
             if (!string.IsNullOrEmpty(AuthToken))
                 dict["ANTHROPIC_AUTH_TOKEN"] = AuthToken;

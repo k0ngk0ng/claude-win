@@ -2,10 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="设置 - Claude Code for Windows"
-        Height="650" Width="700"
+        Height="750" Width="750"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource BackgroundDark}"
-        ResizeMode="NoResize">
+        ResizeMode="CanResize"
+        MinHeight="600" MinWidth="600">
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
@@ -14,15 +15,25 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 标题 -->
-        <StackPanel Grid.Row="0" Margin="0,0,0,20">
-            <TextBlock Text="环境变量配置"
-                       FontSize="24" FontWeight="Bold"
-                       Foreground="{StaticResource TextPrimary}"/>
-            <TextBlock Text="配置 Claude Code 所需的 ANTHROPIC 环境变量"
-                       Foreground="{StaticResource TextSecondary}"
-                       Margin="0,4,0,0"/>
-        </StackPanel>
+        <!-- 标题和导入按钮 -->
+        <Grid Grid.Row="0" Margin="0,0,0,20">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0">
+                <TextBlock Text="环境变量配置"
+                           FontSize="24" FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimary}"/>
+                <TextBlock Text="配置 Claude Code 所需的 ANTHROPIC 环境变量"
+                           Foreground="{StaticResource TextSecondary}"
+                           Margin="0,4,0,0"/>
+            </StackPanel>
+            <Button Grid.Column="1" Content="📋 导入 JSON"
+                    Style="{StaticResource ModernButton}"
+                    VerticalAlignment="Center"
+                    Click="ImportJsonButton_Click"/>
+        </Grid>
 
         <!-- 设置列表 -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
@@ -35,14 +46,24 @@
                         <TextBlock Text="API 配置" FontSize="16" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentColor}" Margin="0,0,0,12"/>
 
+                        <!-- ANTHROPIC_AUTH_TOKEN -->
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="ANTHROPIC_AUTH_TOKEN" FontWeight="Medium"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Text="认证令牌（sk-xxx）"
+                                       Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
+                            <PasswordBox x:Name="AuthTokenBox"
+                                         Background="{StaticResource BackgroundLight}"
+                                         Foreground="{StaticResource TextPrimary}"
+                                         BorderBrush="{StaticResource BorderColor}"
+                                         Padding="8,6"/>
+                        </StackPanel>
+
                         <!-- ANTHROPIC_API_KEY -->
                         <StackPanel Margin="0,0,0,12">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="ANTHROPIC_API_KEY" FontWeight="Medium"
-                                           Foreground="{StaticResource TextPrimary}"/>
-                                <TextBlock Text=" *" Foreground="Red"/>
-                            </StackPanel>
-                            <TextBlock Text="您的 Anthropic API 密钥"
+                            <TextBlock Text="ANTHROPIC_API_KEY" FontWeight="Medium"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Text="Anthropic API 密钥（可选，如已设置 AUTH_TOKEN）"
                                        Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
                             <PasswordBox x:Name="ApiKeyBox"
                                          Background="{StaticResource BackgroundLight}"
@@ -55,7 +76,7 @@
                         <StackPanel Margin="0,0,0,12">
                             <TextBlock Text="ANTHROPIC_BASE_URL" FontWeight="Medium"
                                        Foreground="{StaticResource TextPrimary}"/>
-                            <TextBlock Text="自定义 API 端点 URL（留空使用默认）"
+                            <TextBlock Text="自定义 API 端点 URL"
                                        Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
                             <TextBox x:Name="BaseUrlBox" Style="{StaticResource ModernTextBox}"/>
                         </StackPanel>
@@ -64,18 +85,54 @@
                         <StackPanel Margin="0,0,0,12">
                             <TextBlock Text="ANTHROPIC_MODEL" FontWeight="Medium"
                                        Foreground="{StaticResource TextPrimary}"/>
-                            <TextBlock Text="使用的模型名称（如 claude-sonnet-4-20250514）"
+                            <TextBlock Text="默认使用的模型"
                                        Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
                             <TextBox x:Name="ModelBox" Style="{StaticResource ModernTextBox}"/>
                         </StackPanel>
 
                         <!-- ANTHROPIC_SMALL_FAST_MODEL -->
-                        <StackPanel>
+                        <StackPanel Margin="0,0,0,12">
                             <TextBlock Text="ANTHROPIC_SMALL_FAST_MODEL" FontWeight="Medium"
                                        Foreground="{StaticResource TextPrimary}"/>
                             <TextBlock Text="用于快速任务的小模型"
                                        Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
                             <TextBox x:Name="SmallFastModelBox" Style="{StaticResource ModernTextBox}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 默认模型配置分组 -->
+                <Border Background="{StaticResource BackgroundMedium}"
+                        CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                    <StackPanel>
+                        <TextBlock Text="默认模型配置" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentColor}" Margin="0,0,0,12"/>
+
+                        <!-- ANTHROPIC_DEFAULT_HAIKU_MODEL -->
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="ANTHROPIC_DEFAULT_HAIKU_MODEL" FontWeight="Medium"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Text="默认 Haiku 模型"
+                                       Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
+                            <TextBox x:Name="DefaultHaikuModelBox" Style="{StaticResource ModernTextBox}"/>
+                        </StackPanel>
+
+                        <!-- ANTHROPIC_DEFAULT_SONNET_MODEL -->
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="ANTHROPIC_DEFAULT_SONNET_MODEL" FontWeight="Medium"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Text="默认 Sonnet 模型"
+                                       Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
+                            <TextBox x:Name="DefaultSonnetModelBox" Style="{StaticResource ModernTextBox}"/>
+                        </StackPanel>
+
+                        <!-- ANTHROPIC_DEFAULT_OPUS_MODEL -->
+                        <StackPanel>
+                            <TextBlock Text="ANTHROPIC_DEFAULT_OPUS_MODEL" FontWeight="Medium"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Text="默认 Opus 模型"
+                                       Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
+                            <TextBox x:Name="DefaultOpusModelBox" Style="{StaticResource ModernTextBox}"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>
