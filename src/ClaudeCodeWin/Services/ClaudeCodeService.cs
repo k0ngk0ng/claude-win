@@ -318,7 +318,7 @@ namespace ClaudeCodeWin.Services
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = "npm",
-                    Arguments = "install -g @anthropic-ai/claude-code",
+                    Arguments = "install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,

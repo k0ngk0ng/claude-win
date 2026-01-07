@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using ClaudeCodeWin.Services;
 using ClaudeCodeWin.Views;
 using Microsoft.Win32;
@@ -16,6 +17,7 @@ namespace ClaudeCodeWin
         private readonly ClaudeCodeService _claudeService;
         private readonly List<string> _commandHistory = new();
         private int _historyIndex = -1;
+        private readonly List<string> _pendingImagePaths = new();
 
         public MainWindow()
         {
@@ -170,6 +172,178 @@ namespace ClaudeCodeWin
             settingsWindow.ShowDialog();
         }
 
+        private async void SlashCommand_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button button && button.Tag is string command)
+            {
+                if (!_claudeService.IsRunning)
+                {
+                    AppendToTerminal($"⚠ 请先启动 Claude Code\n", Colors.Yellow);
+                    return;
+                }
+
+                AppendToTerminal($"> {command}\n", Colors.LightBlue);
+                _commandHistory.Add(command);
+                _historyIndex = -1;
+                await _claudeService.SendInputAsync(command);
+            }
+        }
+
+        private void AddImageButton_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new OpenFileDialog
+            {
+                Title = "选择图片",
+                Filter = "图片文件|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp|所有文件|*.*",
+                Multiselect = true
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                foreach (var filePath in dialog.FileNames)
+                {
+                    AddImageAttachment(filePath);
+                }
+            }
+        }
+
+        private void AddImageAttachment(string filePath)
+        {
+            if (!File.Exists(filePath))
+                return;
+
+            _pendingImagePaths.Add(filePath);
+            UpdateAttachmentPreview();
+        }
+
+        private void UpdateAttachmentPreview()
+        {
+            AttachmentList.Items.Clear();
+
+            foreach (var imagePath in _pendingImagePaths)
+            {
+                var fileName = Path.GetFileName(imagePath);
+                var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0, 4, 0) };
+
+                // 缩略图
+                try
+                {
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(imagePath);
+                    bitmap.DecodePixelWidth = 32;
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.EndInit();
+
+                    var image = new Image { Source = bitmap, Width = 24, Height = 24, Margin = new Thickness(0, 0, 4, 0) };
+                    panel.Children.Add(image);
+                }
+                catch
+                {
+                    panel.Children.Add(new TextBlock { Text = "🖼", VerticalAlignment = VerticalAlignment.Center });
+                }
+
+                panel.Children.Add(new TextBlock
+                {
+                    Text = fileName.Length > 20 ? fileName.Substring(0, 17) + "..." : fileName,
+                    Foreground = new SolidColorBrush(Colors.White),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    FontSize = 11
+                });
+
+                // 删除按钮
+                var removeBtn = new Button
+                {
+                    Content = "×",
+                    FontSize = 10,
+                    Padding = new Thickness(4, 0, 4, 0),
+                    Margin = new Thickness(4, 0, 0, 0),
+                    Background = Brushes.Transparent,
+                    Foreground = new SolidColorBrush(Colors.Gray),
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand,
+                    Tag = imagePath
+                };
+                removeBtn.Click += RemoveAttachment_Click;
+                panel.Children.Add(removeBtn);
+
+                AttachmentList.Items.Add(panel);
+            }
+
+            AttachmentPreviewBorder.Visibility = _pendingImagePaths.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void RemoveAttachment_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string path)
+            {
+                _pendingImagePaths.Remove(path);
+                UpdateAttachmentPreview();
+            }
+        }
+
+        private void InputBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            // 处理 Ctrl+V 粘贴图片
+            if (e.Key == Key.V && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+            {
+                if (Clipboard.ContainsImage())
+                {
+                    e.Handled = true;
+                    PasteImageFromClipboard();
+                }
+                else if (Clipboard.ContainsFileDropList())
+                {
+                    var files = Clipboard.GetFileDropList();
+                    foreach (string? file in files)
+                    {
+                        if (file != null && IsImageFile(file))
+                        {
+                            e.Handled = true;
+                            AddImageAttachment(file);
+                        }
+                    }
+                }
+            }
+        }
+
+        private bool IsImageFile(string path)
+        {
+            var ext = Path.GetExtension(path).ToLower();
+            return ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
+                   ext == ".gif" || ext == ".bmp" || ext == ".webp";
+        }
+
+        private void PasteImageFromClipboard()
+        {
+            try
+            {
+                var image = Clipboard.GetImage();
+                if (image == null) return;
+
+                // 保存到临时文件
+                var tempDir = Path.Combine(Path.GetTempPath(), "ClaudeCodeWin");
+                if (!Directory.Exists(tempDir))
+                    Directory.CreateDirectory(tempDir);
+
+                var tempPath = Path.Combine(tempDir, $"clipboard_{DateTime.Now:yyyyMMdd_HHmmss}.png");
+
+                using (var fileStream = new FileStream(tempPath, FileMode.Create))
+                {
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(image));
+                    encoder.Save(fileStream);
+                }
+
+                AddImageAttachment(tempPath);
+                AppendToTerminal($"📋 已粘贴剪贴板图片\n", Colors.Gray);
+            }
+            catch (Exception ex)
+            {
+                AppendToTerminal($"⚠ 粘贴图片失败: {ex.Message}\n", Colors.Yellow);
+            }
+        }
+
         private async void SendButton_Click(object sender, RoutedEventArgs e)
         {
             await SendInput();
@@ -214,18 +388,46 @@ namespace ClaudeCodeWin
         private async Task SendInput()
         {
             var input = InputBox.Text;
-            if (string.IsNullOrWhiteSpace(input))
+
+            // 如果有附件但没有文本，也允许发送
+            if (string.IsNullOrWhiteSpace(input) && _pendingImagePaths.Count == 0)
                 return;
 
             // 添加到历史记录
-            _commandHistory.Add(input);
-            _historyIndex = -1;
+            if (!string.IsNullOrWhiteSpace(input))
+            {
+                _commandHistory.Add(input);
+                _historyIndex = -1;
+            }
 
-            // 显示输入
-            AppendToTerminal($"> {input}\n", Colors.LightBlue);
+            // 构建发送内容
+            var messageToSend = input ?? "";
+
+            // 如果有图片附件，添加图片路径
+            if (_pendingImagePaths.Count > 0)
+            {
+                foreach (var imagePath in _pendingImagePaths)
+                {
+                    // Claude Code 支持直接发送图片路径
+                    messageToSend += $" {imagePath}";
+                }
+
+                // 显示输入（包含图片信息）
+                AppendToTerminal($"> {input}", Colors.LightBlue);
+                AppendToTerminal($" [📎 {_pendingImagePaths.Count} 张图片]\n", Colors.Gray);
+
+                // 清除附件
+                _pendingImagePaths.Clear();
+                UpdateAttachmentPreview();
+            }
+            else
+            {
+                // 显示输入
+                AppendToTerminal($"> {input}\n", Colors.LightBlue);
+            }
 
             InputBox.Text = "";
-            await _claudeService.SendInputAsync(input);
+            await _claudeService.SendInputAsync(messageToSend);
         }
 
         private void OnClaudeOutput(string output)

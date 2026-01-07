@@ -27,6 +27,10 @@
         <!-- 顶部工具栏 -->
         <Border Grid.Row="0" Background="{StaticResource BackgroundMedium}" Padding="10">
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -34,7 +38,7 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Logo 和标题 -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="🤖" FontSize="24" Margin="0,0,10,0" VerticalAlignment="Center"/>
                     <StackPanel>
                         <TextBlock Text="Claude Code" FontSize="18" FontWeight="Bold"
@@ -45,7 +49,7 @@
                 </StackPanel>
 
                 <!-- 工作目录选择 -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center"
+                <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center"
                             VerticalAlignment="Center">
                     <TextBlock Text="工作目录:" Foreground="{StaticResource TextSecondary}"
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
@@ -59,7 +63,7 @@
                 </StackPanel>
 
                 <!-- 操作按钮 -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal">
                     <Button x:Name="StartButton" Content="▶ 启动"
                             Style="{StaticResource ModernButton}"
                             Margin="0,0,8,0"
@@ -73,6 +77,41 @@
                             Style="{StaticResource ModernButton}"
                             Click="SettingsButton_Click"/>
                 </StackPanel>
+
+                <!-- 斜杠命令工具栏 -->
+                <Border Grid.Row="1" Grid.ColumnSpan="3" Margin="0,10,0,0">
+                    <StackPanel x:Name="SlashCommandsPanel" Orientation="Horizontal" HorizontalAlignment="Center">
+                        <TextBlock Text="快捷命令:" Foreground="{StaticResource TextSecondary}"
+                                   VerticalAlignment="Center" Margin="0,0,10,0" FontSize="12"/>
+                        <Button Content="/help" Tag="/help" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="显示帮助信息" Click="SlashCommand_Click"/>
+                        <Button Content="/clear" Tag="/clear" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="清除对话历史" Click="SlashCommand_Click"/>
+                        <Button Content="/compact" Tag="/compact" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="压缩对话上下文" Click="SlashCommand_Click"/>
+                        <Button Content="/config" Tag="/config" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="查看/修改配置" Click="SlashCommand_Click"/>
+                        <Button Content="/cost" Tag="/cost" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="显示 token 消耗统计" Click="SlashCommand_Click"/>
+                        <Button Content="/doctor" Tag="/doctor" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="检查 Claude Code 健康状态" Click="SlashCommand_Click"/>
+                        <Button Content="/init" Tag="/init" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="初始化项目配置" Click="SlashCommand_Click"/>
+                        <Button Content="/review" Tag="/review" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="代码审查" Click="SlashCommand_Click"/>
+                        <Button Content="/terminal-setup" Tag="/terminal-setup" Style="{StaticResource ModernButton}"
+                                FontSize="11" Padding="8,4" Margin="2,0"
+                                ToolTip="终端设置" Click="SlashCommand_Click"/>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
@@ -111,26 +150,64 @@
         <!-- 输入区域 -->
         <Border Grid.Row="2" Background="{StaticResource BackgroundMedium}" Padding="10">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <TextBox x:Name="InputBox"
-                         Grid.Column="0"
-                         Style="{StaticResource ModernTextBox}"
-                         FontFamily="Consolas"
-                         FontSize="14"
-                         VerticalContentAlignment="Center"
-                         KeyDown="InputBox_KeyDown"
-                         IsEnabled="False"/>
+                <!-- 附件预览区域 -->
+                <Border x:Name="AttachmentPreviewBorder" Grid.Row="0" Visibility="Collapsed"
+                        Margin="0,0,0,8" Background="{StaticResource BackgroundLight}"
+                        CornerRadius="4" Padding="8">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📎 附件:" Foreground="{StaticResource TextSecondary}"
+                                       FontSize="12" VerticalAlignment="Center"/>
+                            <ItemsControl x:Name="AttachmentList" Margin="8,0,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
 
-                <Button Grid.Column="1"
-                        Content="发送"
-                        Style="{StaticResource ModernButton}"
-                        Margin="8,0,0,0"
-                        Click="SendButton_Click"
-                        IsEnabled="{Binding ElementName=InputBox, Path=IsEnabled}"/>
+                <!-- 输入行 -->
+                <Grid Grid.Row="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 添加图片按钮 -->
+                    <Button x:Name="AddImageButton" Grid.Column="0"
+                            Content="+" FontSize="18" FontWeight="Bold"
+                            Width="36" Height="36"
+                            Style="{StaticResource ModernButton}"
+                            ToolTip="添加图片 (或使用 Ctrl+V 粘贴)"
+                            Margin="0,0,8,0"
+                            Click="AddImageButton_Click"/>
+
+                    <TextBox x:Name="InputBox"
+                             Grid.Column="1"
+                             Style="{StaticResource ModernTextBox}"
+                             FontFamily="Consolas"
+                             FontSize="14"
+                             VerticalContentAlignment="Center"
+                             KeyDown="InputBox_KeyDown"
+                             PreviewKeyDown="InputBox_PreviewKeyDown"
+                             IsEnabled="False"/>
+
+                    <Button Grid.Column="2"
+                            Content="发送"
+                            Style="{StaticResource ModernButton}"
+                            Margin="8,0,0,0"
+                            Click="SendButton_Click"
+                            IsEnabled="{Binding ElementName=InputBox, Path=IsEnabled}"/>
+                </Grid>
             </Grid>
         </Border>
 
