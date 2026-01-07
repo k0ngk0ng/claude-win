@@ -68,6 +68,13 @@ namespace ClaudeCodeWin.Services
                 // 确保 PATH 包含 Node.js
                 EnsureNodeInPath(startInfo);
 
+                // 设置终端相关环境变量，让 Claude Code 正常输出
+                startInfo.EnvironmentVariables["TERM"] = "xterm-256color";
+                startInfo.EnvironmentVariables["FORCE_COLOR"] = "1";
+                startInfo.EnvironmentVariables["COLORTERM"] = "truecolor";
+                // 告诉 Node.js 这是交互式终端
+                startInfo.EnvironmentVariables["NODE_NO_READLINE"] = "0";
+
                 // 构建命令行参数 - 交互模式
                 var claudeArgs = new StringBuilder();
 
@@ -77,7 +84,7 @@ namespace ClaudeCodeWin.Services
                     claudeArgs.Append("--dangerously-skip-permissions ");
                 }
 
-                // 使用 /K 保持命令窗口运行
+                // 使用 /C 执行命令
                 startInfo.Arguments = $"/C \"\"{_claudePath}\" {claudeArgs}\"";
 
                 if (isDebug)
