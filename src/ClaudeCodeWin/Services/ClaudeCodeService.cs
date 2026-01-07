@@ -65,12 +65,13 @@ namespace ClaudeCodeWin.Services
 
             try
             {
+                // 使用 cmd.exe 来执行 claude.cmd
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = _claudePath,
+                    FileName = "cmd.exe",
                     WorkingDirectory = _workingDirectory,
                     UseShellExecute = false,
-                    RedirectStandardInput = true,
+                    RedirectStandardInput = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true,
@@ -84,69 +85,71 @@ namespace ClaudeCodeWin.Services
                 // 确保 PATH 包含 Node.js
                 EnsureNodeInPath(startInfo);
 
-                // 构建启动参数 - 使用 --print 模式进行非交互式调用
-                var args = new List<string>();
+                // 构建命令行参数
+                var claudeArgs = new StringBuilder();
 
                 // 添加 --dangerously-skip-permissions 参数
                 if (_envService.Config.SkipPermissions == true)
                 {
-                    args.Add("--dangerously-skip-permissions");
+                    claudeArgs.Append("--dangerously-skip-permissions ");
                 }
 
-                // 使用 --print 模式，直接输出结果
-                args.Add("--print");
+                // 使用 -p 模式（--print 的简写）
+                claudeArgs.Append("-p ");
 
-                // 添加用户输入作为提示
-                args.Add($"\"{input.Replace("\"", "\\\"")}\"");
+                // 添加用户输入 - 对特殊字符进行转义
+                var escapedInput = input.Replace("\"", "\\\"");
+                claudeArgs.Append($"\"{escapedInput}\"");
 
-                startInfo.Arguments = string.Join(" ", args);
+                // 使用 /C 执行命令后退出
+                startInfo.Arguments = $"/C \"\"{_claudePath}\" {claudeArgs}\"";
+
+                OnOutput?.Invoke($"[调试] 执行: {_claudePath} {claudeArgs}");
 
                 _process = new Process { StartInfo = startInfo };
                 _process.EnableRaisingEvents = true;
 
+                var outputBuilder = new StringBuilder();
+                var errorBuilder = new StringBuilder();
+
+                _process.OutputDataReceived += (s, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        OnOutput?.Invoke(e.Data);
+                    }
+                };
+
+                _process.ErrorDataReceived += (s, e) =>
+                {
+                    if (e.Data != null)
+                    {
+                        OnError?.Invoke(e.Data);
+                    }
+                };
+
                 _process.Start();
+                _process.BeginOutputReadLine();
+                _process.BeginErrorReadLine();
 
-                // 异步读取输出
-                var outputTask = Task.Run(async () =>
+                // 等待进程完成，设置超时
+                var completed = await Task.Run(() => _process.WaitForExit(300000)); // 5分钟超时
+
+                if (!completed)
                 {
-                    try
-                    {
-                        while (!_process.StandardOutput.EndOfStream)
-                        {
-                            var line = await _process.StandardOutput.ReadLineAsync();
-                            if (line != null)
-                            {
-                                OnOutput?.Invoke(line);
-                            }
-                        }
-                    }
-                    catch { }
-                });
-
-                var errorTask = Task.Run(async () =>
+                    OnError?.Invoke("执行超时（5分钟）");
+                    try { _process.Kill(entireProcessTree: true); } catch { }
+                }
+                else
                 {
-                    try
-                    {
-                        while (!_process.StandardError.EndOfStream)
-                        {
-                            var line = await _process.StandardError.ReadLineAsync();
-                            if (line != null)
-                            {
-                                OnError?.Invoke(line);
-                            }
-                        }
-                    }
-                    catch { }
-                });
-
-                await Task.WhenAll(outputTask, errorTask);
-                await _process.WaitForExitAsync();
+                    OnOutput?.Invoke($"[调试] 进程退出码: {_process.ExitCode}");
+                }
 
                 OnOutput?.Invoke(""); // 添加空行分隔
             }
             catch (Exception ex)
             {
-                OnError?.Invoke($"执行失败: {ex.Message}");
+                OnError?.Invoke($"执行失败: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
