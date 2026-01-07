@@ -101,21 +101,10 @@ jobs:
 
           Write-Host "Node.js extracted to $nodePath"
 
-      - name: Create placeholder icon
-        shell: pwsh
-        run: |
-          $resourcesPath = "installer/resources"
-          New-Item -ItemType Directory -Path $resourcesPath -Force | Out-Null
-
-          # 创建一个简单的占位图标（实际项目中应使用真实图标）
-          # 这里我们跳过图标检查，在 NSIS 中处理
-          if (-not (Test-Path "$resourcesPath/claude.ico")) {
-            Write-Host "Warning: No icon file found. Using default."
-          }
-
       - name: Copy publish files for NSIS
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Path "installer/publish" -Force | Out-Null
           Copy-Item -Path "publish/self-contained/*" -Destination "installer/publish" -Recurse -Force
 
       - name: Update NSIS version
@@ -130,16 +119,7 @@ jobs:
         shell: pwsh
         run: |
           cd installer
-
-          # 检查并创建必要的资源
-          if (-not (Test-Path "resources/claude.ico")) {
-            # 创建空文件作为占位符（实际应使用真实图标）
-            New-Item -ItemType Directory -Path "resources" -Force | Out-Null
-            # 跳过图标，修改 nsi 文件
-          }
-
           makensis /V3 installer.nsi
-        continue-on-error: true
 
       - name: Create portable ZIP
         shell: pwsh
