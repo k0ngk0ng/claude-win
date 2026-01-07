@@ -25,7 +25,7 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 启动 Claude Code
+        /// 启动 Claude Code（使用非交互模式）
         /// </summary>
         public async Task<bool> StartAsync(string workingDirectory, string? initialCommand = null)
         {
@@ -41,12 +41,34 @@ namespace ClaudeCodeWin.Services
                 return false;
             }
 
+            _workingDirectory = workingDirectory;
+            _claudePath = claudePath;
+            _isRunning = true;
+
+            OnOutput?.Invoke("Claude Code 已就绪，请输入您的问题...\n");
+            return true;
+        }
+
+        private string? _workingDirectory;
+        private string? _claudePath;
+
+        /// <summary>
+        /// 发送输入到 Claude Code（每次发送都是一个独立的请求）
+        /// </summary>
+        public async Task SendInputAsync(string input)
+        {
+            if (!_isRunning || string.IsNullOrEmpty(_claudePath) || string.IsNullOrEmpty(_workingDirectory))
+            {
+                OnError?.Invoke("Claude Code 未启动");
+                return;
+            }
+
             try
             {
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = claudePath,
-                    WorkingDirectory = workingDirectory,
+                    FileName = _claudePath,
+                    WorkingDirectory = _workingDirectory,
                     UseShellExecute = false,
                     RedirectStandardInput = true,
                     RedirectStandardOutput = true,
@@ -62,7 +84,7 @@ namespace ClaudeCodeWin.Services
                 // 确保 PATH 包含 Node.js
                 EnsureNodeInPath(startInfo);
 
-                // 构建启动参数
+                // 构建启动参数 - 使用 --print 模式进行非交互式调用
                 var args = new List<string>();
 
                 // 添加 --dangerously-skip-permissions 参数
@@ -71,61 +93,60 @@ namespace ClaudeCodeWin.Services
                     args.Add("--dangerously-skip-permissions");
                 }
 
-                if (!string.IsNullOrEmpty(initialCommand))
-                {
-                    args.Add(initialCommand);
-                }
+                // 使用 --print 模式，直接输出结果
+                args.Add("--print");
 
-                if (args.Count > 0)
-                {
-                    startInfo.Arguments = string.Join(" ", args);
-                }
+                // 添加用户输入作为提示
+                args.Add($"\"{input.Replace("\"", "\\\"")}\"");
+
+                startInfo.Arguments = string.Join(" ", args);
 
                 _process = new Process { StartInfo = startInfo };
-                _process.OutputDataReceived += (s, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        OnOutput?.Invoke(e.Data);
-                    }
-                };
-                _process.ErrorDataReceived += (s, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        OnError?.Invoke(e.Data);
-                    }
-                };
-                _process.Exited += (s, e) =>
-                {
-                    _isRunning = false;
-                    OnProcessExited?.Invoke();
-                };
                 _process.EnableRaisingEvents = true;
 
                 _process.Start();
-                _process.BeginOutputReadLine();
-                _process.BeginErrorReadLine();
 
-                _isRunning = true;
-                return true;
+                // 异步读取输出
+                var outputTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        while (!_process.StandardOutput.EndOfStream)
+                        {
+                            var line = await _process.StandardOutput.ReadLineAsync();
+                            if (line != null)
+                            {
+                                OnOutput?.Invoke(line);
+                            }
+                        }
+                    }
+                    catch { }
+                });
+
+                var errorTask = Task.Run(async () =>
+                {
+                    try
+                    {
+                        while (!_process.StandardError.EndOfStream)
+                        {
+                            var line = await _process.StandardError.ReadLineAsync();
+                            if (line != null)
+                            {
+                                OnError?.Invoke(line);
+                            }
+                        }
+                    }
+                    catch { }
+                });
+
+                await Task.WhenAll(outputTask, errorTask);
+                await _process.WaitForExitAsync();
+
+                OnOutput?.Invoke(""); // 添加空行分隔
             }
             catch (Exception ex)
             {
-                OnError?.Invoke($"启动 Claude Code 失败: {ex.Message}");
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// 发送输入到 Claude Code
-        /// </summary>
-        public async Task SendInputAsync(string input)
-        {
-            if (_process?.StandardInput != null && _isRunning)
-            {
-                await _process.StandardInput.WriteLineAsync(input);
-                await _process.StandardInput.FlushAsync();
+                OnError?.Invoke($"执行失败: {ex.Message}");
             }
         }
 
