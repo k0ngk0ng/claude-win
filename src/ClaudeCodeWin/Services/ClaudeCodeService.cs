@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace ClaudeCodeWin.Services
@@ -12,6 +13,7 @@ namespace ClaudeCodeWin.Services
         private Process? _process;
         private readonly EnvironmentService _envService;
         private bool _isRunning;
+        private int? _processId; // 保存进程 ID 用于清理
 
         public event Action<string>? OnOutput;
         public event Action<string>? OnError;
@@ -151,6 +153,7 @@ namespace ClaudeCodeWin.Services
                 _process.BeginErrorReadLine();
 
                 _isRunning = true;
+                _processId = _process.Id; // 保存进程 ID
 
                 if (isDebug)
                 {
@@ -209,22 +212,103 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 停止 Claude Code
+        /// 停止 Claude Code，杀掉所有相关进程
         /// </summary>
         public void Stop()
         {
-            if (_process != null && !_process.HasExited)
+            _isRunning = false;
+
+            if (_process != null)
             {
                 try
                 {
-                    _process.Kill(entireProcessTree: true);
+                    if (!_process.HasExited)
+                    {
+                        // 先尝试关闭标准输入，让进程正常退出
+                        try
+                        {
+                            _process.StandardInput.Close();
+                        }
+                        catch { }
+
+                        // 等待一小段时间让进程自行退出
+                        if (!_process.WaitForExit(1000))
+                        {
+                            // 如果还没退出，强制杀掉整个进程树
+                            _process.Kill(entireProcessTree: true);
+                        }
+                    }
                 }
                 catch
                 {
                     // 进程可能已经退出
                 }
+
+                // 额外清理：杀掉可能残留的 node.exe 进程
+                try
+                {
+                    KillRelatedProcesses();
+                }
+                catch { }
             }
-            _isRunning = false;
+        }
+
+        /// <summary>
+        /// 杀掉可能残留的相关进程
+        /// </summary>
+        private void KillRelatedProcesses()
+        {
+            if (!_processId.HasValue)
+                return;
+
+            // 使用 taskkill 命令强制杀掉进程树
+            try
+            {
+                var killProcess = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = "taskkill",
+                        Arguments = $"/F /T /PID {_processId.Value}",
+                        UseShellExecute = false,
+                        CreateNoWindow = true,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true
+                    }
+                };
+                killProcess.Start();
+                killProcess.WaitForExit(3000);
+            }
+            catch { }
+
+            // 清理可能残留的 node.exe 进程（通过命令行参数判断）
+            try
+            {
+                foreach (var proc in Process.GetProcessesByName("node"))
+                {
+                    try
+                    {
+                        // 尝试获取命令行参数
+                        using var searcher = new System.Management.ManagementObjectSearcher(
+                            $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {proc.Id}");
+
+                        foreach (var obj in searcher.Get())
+                        {
+                            var cmdLine = obj["CommandLine"]?.ToString() ?? "";
+                            // 检查是否包含 claude 相关路径
+                            if (cmdLine.Contains("claude", StringComparison.OrdinalIgnoreCase) ||
+                                cmdLine.Contains("@anthropic-ai", StringComparison.OrdinalIgnoreCase))
+                            {
+                                proc.Kill(entireProcessTree: true);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+
+            _processId = null;
         }
 
         /// <summary>

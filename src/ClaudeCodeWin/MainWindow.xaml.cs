@@ -508,8 +508,30 @@ namespace ClaudeCodeWin
             TerminalScrollViewer.ScrollToEnd();
         }
 
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            // 检查 Claude Code 是否正在运行
+            if (_claudeService.IsRunning)
+            {
+                var result = MessageBox.Show(
+                    "Claude Code 正在运行中，是否要关闭？\n\n关闭后当前会话将丢失。",
+                    "确认关闭",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.No)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+            }
+
+            base.OnClosing(e);
+        }
+
         protected override void OnClosed(EventArgs e)
         {
+            // 确保杀掉所有相关进程
             _claudeService.Dispose();
             base.OnClosed(e);
         }
