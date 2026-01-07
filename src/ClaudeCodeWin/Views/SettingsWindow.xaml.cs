@@ -41,6 +41,7 @@ namespace ClaudeCodeWin.Views
             MaxRetriesBox.Text = config.MaxRetries?.ToString() ?? "";
 
             // 功能开关
+            SkipPermissionsCheck.IsChecked = config.SkipPermissions ?? true;
             DisableCacheCheck.IsChecked = config.DisableCache ?? false;
             DisableTelemetryCheck.IsChecked = config.DisableTelemetry ?? false;
             DisableUpdateCheckCheck.IsChecked = config.DisableUpdateCheck ?? false;
@@ -185,6 +186,7 @@ namespace ClaudeCodeWin.Views
                 config.MaxRetries = null;
 
             // 功能开关
+            config.SkipPermissions = SkipPermissionsCheck.IsChecked == true ? true : false;
             config.DisableCache = DisableCacheCheck.IsChecked == true ? true : null;
             config.DisableTelemetry = DisableTelemetryCheck.IsChecked == true ? true : null;
             config.DisableUpdateCheck = DisableUpdateCheckCheck.IsChecked == true ? true : null;

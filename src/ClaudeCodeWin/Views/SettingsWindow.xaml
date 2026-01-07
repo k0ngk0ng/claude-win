@@ -180,6 +180,12 @@
                         <TextBlock Text="功能开关" FontSize="16" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentColor}" Margin="0,0,0,12"/>
 
+                        <CheckBox x:Name="SkipPermissionsCheck" Content="跳过权限确认 (--dangerously-skip-permissions)"
+                                  Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8"
+                                  IsChecked="True"/>
+                        <TextBlock Text="启用后将自动批准所有操作，无需手动确认"
+                                   Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="20,0,0,12"/>
+
                         <CheckBox x:Name="DisableCacheCheck" Content="禁用缓存 (ANTHROPIC_DISABLE_CACHE)"
                                   Foreground="{StaticResource TextPrimary}" Margin="0,0,0,8"/>
                         <CheckBox x:Name="DisableTelemetryCheck" Content="禁用遥测 (ANTHROPIC_DISABLE_TELEMETRY)"

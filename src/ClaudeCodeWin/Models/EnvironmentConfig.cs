@@ -116,6 +116,15 @@ namespace ClaudeCodeWin.Models
         [JsonProperty("ANTHROPIC_LOG_LEVEL")]
         public string? LogLevel { get; set; }
 
+        // === 权限配置 ===
+
+        /// <summary>
+        /// 跳过权限确认（--dangerously-skip-permissions）
+        /// 默认启用以提升使用体验
+        /// </summary>
+        [JsonProperty("SKIP_PERMISSIONS")]
+        public bool? SkipPermissions { get; set; } = true;
+
         // === 自定义配置 ===
 
         /// <summary>

@@ -62,9 +62,23 @@ namespace ClaudeCodeWin.Services
                 // 确保 PATH 包含 Node.js
                 EnsureNodeInPath(startInfo);
 
+                // 构建启动参数
+                var args = new List<string>();
+
+                // 添加 --dangerously-skip-permissions 参数
+                if (_envService.Config.SkipPermissions == true)
+                {
+                    args.Add("--dangerously-skip-permissions");
+                }
+
                 if (!string.IsNullOrEmpty(initialCommand))
                 {
-                    startInfo.Arguments = initialCommand;
+                    args.Add(initialCommand);
+                }
+
+                if (args.Count > 0)
+                {
+                    startInfo.Arguments = string.Join(" ", args);
                 }
 
                 _process = new Process { StartInfo = startInfo };
