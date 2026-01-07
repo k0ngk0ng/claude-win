@@ -21,10 +21,6 @@ SetCompressor /SOLID lzma
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 !include "LogicLib.nsh"
-!include "WinMessages.nsh"
-
-; HWND_BROADCAST 定义
-!define HWND_BROADCAST 0xFFFF
 
 ;--------------------------------
 ; MUI 设置
@@ -77,25 +73,14 @@ Section "主程序" SEC_MAIN
     ; 复制主程序文件
     File /r "publish\*.*"
 
-    ; 复制内置的 Node.js
-    SetOutPath "$INSTDIR\nodejs"
-    File /r "nodejs\*.*"
+    ; 复制内置的 Node.js（如果存在）
+    IfFileExists "nodejs\node.exe" 0 skip_nodejs
+        SetOutPath "$INSTDIR\nodejs"
+        File /r "nodejs\*.*"
+    skip_nodejs:
 
     ; 创建数据目录
     CreateDirectory "$APPDATA\ClaudeCodeWin"
-
-    ; 将内置 Node.js 添加到系统 PATH（用户级别）
-    ; 使用注册表设置用户 PATH
-    ReadRegStr $0 HKCU "Environment" "Path"
-    ${If} $0 != ""
-        StrCpy $0 "$0;$INSTDIR\nodejs"
-    ${Else}
-        StrCpy $0 "$INSTDIR\nodejs"
-    ${EndIf}
-    WriteRegExpandStr HKCU "Environment" "Path" "$0"
-
-    ; 通知系统环境变量已更改
-    SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
     ; 写入卸载信息
     WriteUninstaller "$INSTDIR\uninstall.exe"
