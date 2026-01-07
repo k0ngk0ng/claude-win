@@ -253,9 +253,10 @@ namespace ClaudeCodeWin.Services
         {
             try
             {
+                var nodePath = GetNodeExecutablePath();
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = "node",
+                    FileName = nodePath ?? "node",
                     Arguments = "--version",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
@@ -284,14 +285,23 @@ namespace ClaudeCodeWin.Services
         {
             try
             {
+                var npmPath = GetNpmExecutablePath();
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = "npm",
+                    FileName = npmPath ?? "npm",
                     Arguments = "--version",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     CreateNoWindow = true
                 };
+
+                // 确保 Node.js 在 PATH 中
+                var nodeDir = Path.GetDirectoryName(GetNodeExecutablePath());
+                if (!string.IsNullOrEmpty(nodeDir))
+                {
+                    startInfo.EnvironmentVariables["PATH"] = nodeDir + Path.PathSeparator +
+                        Environment.GetEnvironmentVariable("PATH");
+                }
 
                 using var process = Process.Start(startInfo);
                 if (process != null)
@@ -309,15 +319,92 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
+        /// 获取 Node.js 可执行文件路径
+        /// </summary>
+        private static string? GetNodeExecutablePath()
+        {
+            var possiblePaths = new List<string>();
+
+            // 首先检查安装目录下的内置 Node.js
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "node.exe"));
+
+            // 应用程序目录
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            possiblePaths.Add(Path.Combine(appDir, "nodejs", "node.exe"));
+
+            // 常见安装路径
+            possiblePaths.Add(Path.Combine(programFiles, "nodejs", "node.exe"));
+            var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            possiblePaths.Add(Path.Combine(programFilesX86, "nodejs", "node.exe"));
+
+            // 在 PATH 中查找
+            var pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (!string.IsNullOrEmpty(pathEnv))
+            {
+                foreach (var pathDir in pathEnv.Split(Path.PathSeparator))
+                {
+                    possiblePaths.Add(Path.Combine(pathDir, "node.exe"));
+                }
+            }
+
+            return possiblePaths.FirstOrDefault(File.Exists);
+        }
+
+        /// <summary>
+        /// 获取 npm 可执行文件路径
+        /// </summary>
+        private static string? GetNpmExecutablePath()
+        {
+            var possiblePaths = new List<string>();
+
+            // 首先检查安装目录下的内置 npm
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "npm.cmd"));
+
+            // 应用程序目录
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            possiblePaths.Add(Path.Combine(appDir, "nodejs", "npm.cmd"));
+
+            // 常见安装路径
+            possiblePaths.Add(Path.Combine(programFiles, "nodejs", "npm.cmd"));
+            var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            possiblePaths.Add(Path.Combine(programFilesX86, "nodejs", "npm.cmd"));
+
+            // npm 全局目录
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            possiblePaths.Add(Path.Combine(appData, "npm", "npm.cmd"));
+
+            // 在 PATH 中查找
+            var pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (!string.IsNullOrEmpty(pathEnv))
+            {
+                foreach (var pathDir in pathEnv.Split(Path.PathSeparator))
+                {
+                    possiblePaths.Add(Path.Combine(pathDir, "npm.cmd"));
+                    possiblePaths.Add(Path.Combine(pathDir, "npm"));
+                }
+            }
+
+            return possiblePaths.FirstOrDefault(File.Exists);
+        }
+
+        /// <summary>
         /// 安装 Claude Code CLI
         /// </summary>
         public static async Task<(bool success, string message)> InstallClaudeCodeAsync(Action<string>? onOutput = null)
         {
             try
             {
+                var npmPath = GetNpmExecutablePath();
+                if (string.IsNullOrEmpty(npmPath))
+                {
+                    return (false, "找不到 npm，请确保已安装 Node.js");
+                }
+
                 var startInfo = new ProcessStartInfo
                 {
-                    FileName = "npm",
+                    FileName = npmPath,
                     Arguments = "install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
@@ -326,6 +413,14 @@ namespace ClaudeCodeWin.Services
                     StandardOutputEncoding = Encoding.UTF8,
                     StandardErrorEncoding = Encoding.UTF8
                 };
+
+                // 确保 Node.js 在 PATH 中
+                var nodeDir = Path.GetDirectoryName(GetNodeExecutablePath());
+                if (!string.IsNullOrEmpty(nodeDir))
+                {
+                    startInfo.EnvironmentVariables["PATH"] = nodeDir + Path.PathSeparator +
+                        Environment.GetEnvironmentVariable("PATH");
+                }
 
                 using var process = Process.Start(startInfo);
                 if (process != null)
