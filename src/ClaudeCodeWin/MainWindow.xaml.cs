@@ -35,29 +35,81 @@ namespace ClaudeCodeWin
             // 显示欢迎消息
             AppendToTerminal("欢迎使用 Claude Code for Windows!\n", Colors.LightGreen);
             AppendToTerminal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Colors.Gray);
-            AppendToTerminal("点击 [▶ 启动] 按钮开始使用 Claude Code\n", Colors.White);
-            AppendToTerminal("点击 [⚙ 设置] 配置环境变量和 API 密钥\n\n", Colors.White);
 
-            // 检查安装状态
-            CheckInstallation();
+            // 异步检查安装状态
+            Loaded += async (s, e) => await CheckInstallationAsync();
         }
 
-        private void CheckInstallation()
+        private async Task CheckInstallationAsync()
         {
-            if (!ClaudeCodeService.IsInstalled())
+            // 检查 Node.js
+            var nodeVersion = ClaudeCodeService.GetNodeVersion();
+            var npmVersion = ClaudeCodeService.GetNpmVersion();
+
+            if (string.IsNullOrEmpty(nodeVersion))
             {
-                AppendToTerminal("⚠ 警告: 未检测到 Claude Code 安装\n", Colors.Orange);
-                AppendToTerminal("请先安装: npm install -g @anthropic-ai/claude-code\n\n", Colors.Yellow);
+                AppendToTerminal("✗ Node.js 未安装\n", Colors.Red);
+                AppendToTerminal("  请先安装 Node.js: https://nodejs.org/\n\n", Colors.Yellow);
             }
             else
             {
-                AppendToTerminal("✓ Claude Code 已就绪\n\n", Colors.LightGreen);
+                AppendToTerminal($"✓ Node.js {nodeVersion}", Colors.LightGreen);
+                if (!string.IsNullOrEmpty(npmVersion))
+                {
+                    AppendToTerminal($" (npm {npmVersion})", Colors.Gray);
+                }
+                AppendToTerminal("\n", Colors.White);
             }
 
+            // 检查 Claude Code
+            if (!ClaudeCodeService.IsInstalled())
+            {
+                if (!string.IsNullOrEmpty(nodeVersion))
+                {
+                    AppendToTerminal("✗ Claude Code 未安装，正在自动安装...\n", Colors.Yellow);
+                    AppendToTerminal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Colors.Gray);
+
+                    // 禁用启动按钮
+                    StartButton.IsEnabled = false;
+
+                    var (success, message) = await ClaudeCodeService.InstallClaudeCodeAsync(output =>
+                    {
+                        Dispatcher.Invoke(() => AppendToTerminal(output + "\n", Colors.Gray));
+                    });
+
+                    AppendToTerminal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Colors.Gray);
+
+                    if (success)
+                    {
+                        AppendToTerminal("✓ " + message + "\n", Colors.LightGreen);
+                    }
+                    else
+                    {
+                        AppendToTerminal("✗ " + message + "\n", Colors.Red);
+                        AppendToTerminal("  请手动运行: npm install -g @anthropic-ai/claude-code\n", Colors.Yellow);
+                    }
+
+                    StartButton.IsEnabled = true;
+                }
+                else
+                {
+                    AppendToTerminal("✗ Claude Code 未安装（需要先安装 Node.js）\n", Colors.Red);
+                }
+            }
+            else
+            {
+                AppendToTerminal("✓ Claude Code 已就绪\n", Colors.LightGreen);
+            }
+
+            AppendToTerminal("\n", Colors.White);
+
+            // 检查 API 密钥
             if (string.IsNullOrEmpty(_envService.Config.ApiKey))
             {
-                AppendToTerminal("⚠ 提示: 未配置 API 密钥，请在设置中配置\n\n", Colors.Yellow);
+                AppendToTerminal("⚠ 提示: 未配置 API 密钥，请点击 [⚙ 设置] 配置\n\n", Colors.Yellow);
             }
+
+            AppendToTerminal("点击 [▶ 启动] 按钮开始使用 Claude Code\n", Colors.White);
         }
 
         private void BrowseDirectory_Click(object sender, RoutedEventArgs e)

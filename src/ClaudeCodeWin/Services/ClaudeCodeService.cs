@@ -232,6 +232,134 @@ namespace ClaudeCodeWin.Services
             return service.FindClaudeCodePath() != null;
         }
 
+        /// <summary>
+        /// 获取 Node.js 版本
+        /// </summary>
+        public static string? GetNodeVersion()
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "node",
+                    Arguments = "--version",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    var output = process.StandardOutput.ReadToEnd().Trim();
+                    process.WaitForExit(5000);
+                    return output;
+                }
+            }
+            catch
+            {
+                // Node.js 未安装
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 获取 npm 版本
+        /// </summary>
+        public static string? GetNpmVersion()
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "npm",
+                    Arguments = "--version",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    var output = process.StandardOutput.ReadToEnd().Trim();
+                    process.WaitForExit(5000);
+                    return output;
+                }
+            }
+            catch
+            {
+                // npm 未安装
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 安装 Claude Code CLI
+        /// </summary>
+        public static async Task<(bool success, string message)> InstallClaudeCodeAsync(Action<string>? onOutput = null)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = "npm",
+                    Arguments = "install -g @anthropic-ai/claude-code",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = Encoding.UTF8,
+                    StandardErrorEncoding = Encoding.UTF8
+                };
+
+                using var process = Process.Start(startInfo);
+                if (process != null)
+                {
+                    var outputTask = Task.Run(async () =>
+                    {
+                        while (!process.StandardOutput.EndOfStream)
+                        {
+                            var line = await process.StandardOutput.ReadLineAsync();
+                            if (line != null)
+                            {
+                                onOutput?.Invoke(line);
+                            }
+                        }
+                    });
+
+                    var errorTask = Task.Run(async () =>
+                    {
+                        while (!process.StandardError.EndOfStream)
+                        {
+                            var line = await process.StandardError.ReadLineAsync();
+                            if (line != null)
+                            {
+                                onOutput?.Invoke(line);
+                            }
+                        }
+                    });
+
+                    await Task.WhenAll(outputTask, errorTask);
+                    await process.WaitForExitAsync();
+
+                    if (process.ExitCode == 0)
+                    {
+                        return (true, "Claude Code 安装成功！");
+                    }
+                    else
+                    {
+                        return (false, $"安装失败，退出码: {process.ExitCode}");
+                    }
+                }
+                return (false, "无法启动 npm 进程");
+            }
+            catch (Exception ex)
+            {
+                return (false, $"安装失败: {ex.Message}");
+            }
+        }
+
         public void Dispose()
         {
             Stop();
