@@ -1,10 +1,5 @@
 ; Claude Code for Windows Installer
 ; NSIS Script
-; Requires NSIS 3.x with Unicode support
-
-;--------------------------------
-; Unicode support (required for Chinese)
-Unicode true
 
 ;--------------------------------
 ; Basic definitions
@@ -46,26 +41,15 @@ SetCompressor /SOLID lzma
 
 ; Finish page
 !define MUI_FINISHPAGE_RUN "$INSTDIR\ClaudeCodeWin.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "$(RunAfterInstall)"
+!define MUI_FINISHPAGE_RUN_TEXT "Launch Claude Code for Windows"
 !insertmacro MUI_PAGE_FINISH
 
 ; Uninstall pages
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 
-; Languages
-!insertmacro MUI_LANGUAGE "SimpChinese"
+; Language - English only
 !insertmacro MUI_LANGUAGE "English"
-
-; Language strings
-LangString RunAfterInstall ${LANG_SIMPCHINESE} "启动 Claude Code for Windows"
-LangString RunAfterInstall ${LANG_ENGLISH} "Launch Claude Code for Windows"
-LangString UninstallLink ${LANG_SIMPCHINESE} "卸载"
-LangString UninstallLink ${LANG_ENGLISH} "Uninstall"
-LangString DeleteConfig ${LANG_SIMPCHINESE} "是否删除配置文件？"
-LangString DeleteConfig ${LANG_ENGLISH} "Delete configuration files?"
-LangString MainSection ${LANG_SIMPCHINESE} "主程序"
-LangString MainSection ${LANG_ENGLISH} "Main Program"
 
 ;--------------------------------
 ; Installer properties
@@ -80,7 +64,7 @@ RequestExecutionLevel admin
 ;--------------------------------
 ; Install section
 
-Section "$(MainSection)" SEC_MAIN
+Section "Main Program" SEC_MAIN
     SectionIn RO
     SetOutPath "$INSTDIR"
 
@@ -113,7 +97,7 @@ Section "$(MainSection)" SEC_MAIN
     SetShellVarContext all
     CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
     CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Claude Code for Windows.lnk" "$INSTDIR\ClaudeCodeWin.exe"
-    CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\$(UninstallLink).lnk" "$INSTDIR\uninstall.exe"
+    CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Uninstall.lnk" "$INSTDIR\uninstall.exe"
 
     ; Create Desktop shortcut
     CreateShortCut "$DESKTOP\Claude Code for Windows.lnk" "$INSTDIR\ClaudeCodeWin.exe"
@@ -135,7 +119,7 @@ Section "Uninstall"
     DeleteRegKey HKLM "${PRODUCT_DIR_REGKEY}"
 
     ; Ask to delete config
-    MessageBox MB_YESNO "$(DeleteConfig)" IDNO skip_config
+    MessageBox MB_YESNO "Delete configuration files?" IDNO skip_config
         RMDir /r "$APPDATA\ClaudeCodeWin"
     skip_config:
 
@@ -145,17 +129,10 @@ SectionEnd
 ;--------------------------------
 ; Version info
 VIProductVersion "${PRODUCT_VERSION}.0"
-VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "ProductName" "${PRODUCT_NAME}"
-VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "Comments" "Windows Claude Code Client"
-VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "CompanyName" "${PRODUCT_PUBLISHER}"
-VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "LegalCopyright" "Copyright (C) 2024"
-VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "FileDescription" "${PRODUCT_NAME} Setup"
-VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "FileVersion" "${PRODUCT_VERSION}"
-VIAddVersionKey /LANG=${LANG_SIMPCHINESE} "ProductVersion" "${PRODUCT_VERSION}"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "${PRODUCT_NAME}"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "Comments" "Windows Claude Code Client"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "CompanyName" "${PRODUCT_PUBLISHER}"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "Copyright (C) 2024"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "${PRODUCT_NAME} Setup"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "${PRODUCT_VERSION}"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "${PRODUCT_VERSION}"
+VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
+VIAddVersionKey "Comments" "Windows Claude Code Client"
+VIAddVersionKey "CompanyName" "${PRODUCT_PUBLISHER}"
+VIAddVersionKey "LegalCopyright" "Copyright (C) 2024"
+VIAddVersionKey "FileDescription" "${PRODUCT_NAME} Setup"
+VIAddVersionKey "FileVersion" "${PRODUCT_VERSION}"
+VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
