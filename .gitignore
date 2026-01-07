@@ -1,0 +1,24 @@
+# Build output
+**/bin/
+**/obj/
+**/publish/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# NSIS output
+installer/*.exe
+installer/nodejs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment files
+*.env

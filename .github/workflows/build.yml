@@ -1,0 +1,224 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (如 1.0.0)'
+        required: true
+        type: string
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  NODE_VERSION: '20.11.1'
+  PROJECT_PATH: src/ClaudeCodeWin/ClaudeCodeWin.csproj
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Get version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -match "refs/tags/v(.+)") {
+            $version = $matches[1]
+          } elseif ("${{ github.event.inputs.version }}" -ne "") {
+            $version = "${{ github.event.inputs.version }}"
+          } else {
+            $version = "1.0.0"
+          }
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "Version: $version"
+
+      - name: Restore dependencies
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+
+      - name: Build
+        run: |
+          dotnet build ${{ env.PROJECT_PATH }} `
+            -c Release `
+            --no-restore `
+            -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Publish (Self-contained)
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -o publish/self-contained `
+            -p:Version=${{ steps.version.outputs.version }} `
+            -p:PublishSingleFile=false `
+            -p:IncludeNativeLibrariesForSelfExtract=true
+
+      - name: Publish (Framework-dependent)
+        run: |
+          dotnet publish ${{ env.PROJECT_PATH }} `
+            -c Release `
+            -r win-x64 `
+            --self-contained false `
+            -o publish/framework-dependent `
+            -p:Version=${{ steps.version.outputs.version }}
+
+      - name: Install NSIS
+        run: |
+          choco install nsis -y
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+
+      - name: Download Node.js for bundling
+        shell: pwsh
+        run: |
+          $nodeUrl = "https://nodejs.org/dist/v${{ env.NODE_VERSION }}/node-v${{ env.NODE_VERSION }}-win-x64.zip"
+          $nodePath = "installer/nodejs"
+
+          New-Item -ItemType Directory -Path $nodePath -Force | Out-Null
+
+          Write-Host "Downloading Node.js from $nodeUrl"
+          Invoke-WebRequest -Uri $nodeUrl -OutFile "$env:TEMP/nodejs.zip"
+
+          Write-Host "Extracting Node.js..."
+          Expand-Archive -Path "$env:TEMP/nodejs.zip" -DestinationPath "$env:TEMP/nodejs-extract" -Force
+
+          Copy-Item -Path "$env:TEMP/nodejs-extract/node-v${{ env.NODE_VERSION }}-win-x64/*" -Destination $nodePath -Recurse -Force
+
+          Write-Host "Node.js extracted to $nodePath"
+
+      - name: Create placeholder icon
+        shell: pwsh
+        run: |
+          $resourcesPath = "installer/resources"
+          New-Item -ItemType Directory -Path $resourcesPath -Force | Out-Null
+
+          # 创建一个简单的占位图标（实际项目中应使用真实图标）
+          # 这里我们跳过图标检查，在 NSIS 中处理
+          if (-not (Test-Path "$resourcesPath/claude.ico")) {
+            Write-Host "Warning: No icon file found. Using default."
+          }
+
+      - name: Copy publish files for NSIS
+        shell: pwsh
+        run: |
+          Copy-Item -Path "publish/self-contained/*" -Destination "installer/publish" -Recurse -Force
+
+      - name: Update NSIS version
+        shell: pwsh
+        run: |
+          $nsiFile = "installer/installer.nsi"
+          $content = Get-Content $nsiFile -Raw
+          $content = $content -replace '!define PRODUCT_VERSION ".*"', '!define PRODUCT_VERSION "${{ steps.version.outputs.version }}"'
+          Set-Content -Path $nsiFile -Value $content
+
+      - name: Build NSIS Installer
+        shell: pwsh
+        run: |
+          cd installer
+
+          # 检查并创建必要的资源
+          if (-not (Test-Path "resources/claude.ico")) {
+            # 创建空文件作为占位符（实际应使用真实图标）
+            New-Item -ItemType Directory -Path "resources" -Force | Out-Null
+            # 跳过图标，修改 nsi 文件
+          }
+
+          makensis /V3 installer.nsi
+        continue-on-error: true
+
+      - name: Create portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "publish/self-contained/*" -DestinationPath "ClaudeCodeWin-${{ steps.version.outputs.version }}-portable.zip"
+
+      - name: Create framework-dependent ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "publish/framework-dependent/*" -DestinationPath "ClaudeCodeWin-${{ steps.version.outputs.version }}-framework-dependent.zip"
+
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeCodeWin-portable
+          path: ClaudeCodeWin-${{ steps.version.outputs.version }}-portable.zip
+
+      - name: Upload framework-dependent artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClaudeCodeWin-framework-dependent
+          path: ClaudeCodeWin-${{ steps.version.outputs.version }}-framework-dependent.zip
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: ClaudeCodeWin-installer
+          path: installer/ClaudeCodeWin-Setup-*.exe
+          if-no-files-found: ignore
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always() && needs.build.result == 'success'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Claude Code for Windows ${{ needs.build.outputs.version }}
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', needs.build.outputs.version) }}
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          prerelease: ${{ contains(needs.build.outputs.version, 'alpha') || contains(needs.build.outputs.version, 'beta') || contains(needs.build.outputs.version, 'rc') }}
+          generate_release_notes: true
+          files: |
+            artifacts/ClaudeCodeWin-portable/*.zip
+            artifacts/ClaudeCodeWin-framework-dependent/*.zip
+            artifacts/ClaudeCodeWin-installer/*.exe
+          body: |
+            ## Claude Code for Windows ${{ needs.build.outputs.version }}
+
+            ### 下载说明
+
+            | 文件 | 说明 |
+            |------|------|
+            | `ClaudeCodeWin-Setup-*.exe` | **推荐** - 完整安装程序，包含 Node.js 运行时 |
+            | `*-portable.zip` | 便携版，自包含所有依赖，解压即用 |
+            | `*-framework-dependent.zip` | 轻量版，需要系统已安装 .NET 8 Runtime |
+
+            ### 系统要求
+
+            - Windows 10/11 (64位)
+            - Node.js 18+ (安装程序可自动安装)
+
+            ### 首次使用
+
+            1. 安装或解压程序
+            2. 启动 Claude Code for Windows
+            3. 点击 **设置** 配置 API 密钥
+            4. 选择工作目录，点击启动

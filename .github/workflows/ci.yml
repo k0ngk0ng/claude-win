@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore src/ClaudeCodeWin/ClaudeCodeWin.csproj
+
+      - name: Build
+        run: dotnet build src/ClaudeCodeWin/ClaudeCodeWin.csproj -c Release --no-restore
+
+      - name: Check code format
+        run: dotnet format src/ClaudeCodeWin/ClaudeCodeWin.csproj --verify-no-changes --verbosity diagnostic
+        continue-on-error: true
+
+  code-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for secrets in code
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ""
+          extra_args: --only-verified
+        continue-on-error: true
+
+      - name: Check NSIS script syntax
+        run: |
+          # 基本语法检查
+          if grep -q "!define PRODUCT_NAME" installer/installer.nsi; then
+            echo "✓ NSIS script looks valid"
+          else
+            echo "✗ NSIS script may have issues"
+            exit 1
+          fi

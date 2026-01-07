@@ -1,0 +1,150 @@
+<Window x:Class="ClaudeCodeWin.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Claude Code for Windows"
+        Height="700" Width="1000"
+        MinHeight="500" MinWidth="700"
+        Background="{StaticResource BackgroundDark}"
+        WindowStyle="SingleBorderWindow">
+
+    <Window.Resources>
+        <!-- 终端输出样式 -->
+        <Style x:Key="TerminalText" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Consolas, Courier New, monospace"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 顶部工具栏 -->
+        <Border Grid.Row="0" Background="{StaticResource BackgroundMedium}" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Logo 和标题 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🤖" FontSize="24" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                    <StackPanel>
+                        <TextBlock Text="Claude Code" FontSize="18" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimary}"/>
+                        <TextBlock Text="Windows Client" FontSize="11"
+                                   Foreground="{StaticResource TextSecondary}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- 工作目录选择 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="工作目录:" Foreground="{StaticResource TextSecondary}"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBox x:Name="WorkingDirectoryBox"
+                             Width="350"
+                             Style="{StaticResource ModernTextBox}"
+                             VerticalContentAlignment="Center"/>
+                    <Button Content="..." Width="40" Margin="4,0,0,0"
+                            Style="{StaticResource ModernButton}"
+                            Click="BrowseDirectory_Click"/>
+                </StackPanel>
+
+                <!-- 操作按钮 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button x:Name="StartButton" Content="▶ 启动"
+                            Style="{StaticResource ModernButton}"
+                            Margin="0,0,8,0"
+                            Click="StartButton_Click"/>
+                    <Button x:Name="StopButton" Content="■ 停止"
+                            Style="{StaticResource ModernButton}"
+                            IsEnabled="False"
+                            Margin="0,0,8,0"
+                            Click="StopButton_Click"/>
+                    <Button Content="⚙ 设置"
+                            Style="{StaticResource ModernButton}"
+                            Click="SettingsButton_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 终端区域 -->
+        <Border Grid.Row="1" Margin="10"
+                Background="{StaticResource BackgroundMedium}"
+                BorderBrush="{StaticResource BorderColor}"
+                BorderThickness="1"
+                CornerRadius="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <ScrollViewer x:Name="TerminalScrollViewer"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <RichTextBox x:Name="TerminalOutput"
+                                 Background="Transparent"
+                                 Foreground="{StaticResource TextPrimary}"
+                                 FontFamily="Consolas, Courier New, monospace"
+                                 FontSize="14"
+                                 IsReadOnly="True"
+                                 BorderThickness="0"
+                                 Padding="12"
+                                 VerticalScrollBarVisibility="Disabled">
+                        <RichTextBox.Document>
+                            <FlowDocument PageWidth="2000">
+                            </FlowDocument>
+                        </RichTextBox.Document>
+                    </RichTextBox>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
+        <!-- 输入区域 -->
+        <Border Grid.Row="2" Background="{StaticResource BackgroundMedium}" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBox x:Name="InputBox"
+                         Grid.Column="0"
+                         Style="{StaticResource ModernTextBox}"
+                         FontFamily="Consolas"
+                         FontSize="14"
+                         VerticalContentAlignment="Center"
+                         KeyDown="InputBox_KeyDown"
+                         IsEnabled="False"/>
+
+                <Button Grid.Column="1"
+                        Content="发送"
+                        Style="{StaticResource ModernButton}"
+                        Margin="8,0,0,0"
+                        Click="SendButton_Click"
+                        IsEnabled="{Binding ElementName=InputBox, Path=IsEnabled}"/>
+            </Grid>
+        </Border>
+
+        <!-- 状态栏 -->
+        <Border Grid.Row="2" Background="{StaticResource BackgroundLight}"
+                VerticalAlignment="Bottom" Height="24"
+                Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal" Margin="10,0">
+                <Ellipse x:Name="StatusIndicator" Width="8" Height="8" Fill="Gray"
+                         VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock x:Name="StatusText" Text="就绪"
+                           Foreground="{StaticResource TextSecondary}"
+                           FontSize="12" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
