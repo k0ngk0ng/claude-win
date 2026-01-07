@@ -12,14 +12,9 @@
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
 
-; Node.js 版本
-!define NODE_VERSION "20.11.1"
-!define NODE_ARCH "x64"
-
 ;--------------------------------
 ; 压缩设置
 SetCompressor /SOLID lzma
-SetCompressorDictSize 64
 
 ;--------------------------------
 ; 现代界面
@@ -41,9 +36,6 @@ SetCompressorDictSize 64
 
 ; 目录选择页面
 !insertmacro MUI_PAGE_DIRECTORY
-
-; 组件选择页面
-!insertmacro MUI_PAGE_COMPONENTS
 
 ; 安装页面
 !insertmacro MUI_PAGE_INSTFILES
@@ -72,20 +64,18 @@ ShowUnInstDetails show
 RequestExecutionLevel admin
 
 ;--------------------------------
-; 安装类型
-InstType "完整安装 (推荐)"
-InstType "最小安装"
-InstType "自定义"
-
-;--------------------------------
 ; 安装段
 
 Section "主程序" SEC_MAIN
-    SectionIn 1 2 3 RO
+    SectionIn RO
     SetOutPath "$INSTDIR"
 
     ; 复制主程序文件
     File /r "publish\*.*"
+
+    ; 复制内置的 Node.js（如果存在）
+    IfFileExists "nodejs\*.*" 0 +2
+        File /r "nodejs"
 
     ; 创建数据目录
     CreateDirectory "$APPDATA\ClaudeCodeWin"
@@ -104,97 +94,16 @@ Section "主程序" SEC_MAIN
     ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
     IntFmt $0 "0x%08X" $0
     WriteRegDWORD ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "EstimatedSize" "$0"
-SectionEnd
 
-Section "Node.js 运行时" SEC_NODEJS
-    SectionIn 1 3
-    SetOutPath "$INSTDIR\nodejs"
-
-    ; 检查是否已安装 Node.js
-    nsExec::ExecToStack 'cmd /c node --version'
-    Pop $0
-    Pop $1
-
-    ${If} $0 != 0
-        ; 下载并安装 Node.js
-        DetailPrint "正在下载 Node.js ${NODE_VERSION}..."
-
-        ; 如果 Node.js 不存在，从安装包中解压或下载
-        File /nonfatal /r "nodejs\*.*"
-
-        ${If} ${FileExists} "$INSTDIR\nodejs\node.exe"
-            DetailPrint "Node.js 已安装到 $INSTDIR\nodejs"
-        ${Else}
-            ; 下载 Node.js
-            inetc::get /NOCANCEL \
-                "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-${NODE_ARCH}.zip" \
-                "$TEMP\nodejs.zip" /END
-            Pop $0
-
-            ${If} $0 == "OK"
-                ; 解压 Node.js
-                DetailPrint "正在解压 Node.js..."
-                nsisunz::UnzipToLog "$TEMP\nodejs.zip" "$INSTDIR"
-                Rename "$INSTDIR\node-v${NODE_VERSION}-win-${NODE_ARCH}" "$INSTDIR\nodejs"
-                Delete "$TEMP\nodejs.zip"
-            ${Else}
-                MessageBox MB_ICONEXCLAMATION "下载 Node.js 失败！请手动安装 Node.js 或检查网络连接。"
-            ${EndIf}
-        ${EndIf}
-
-        ; 添加到 PATH
-        EnVar::SetHKLM
-        EnVar::AddValue "PATH" "$INSTDIR\nodejs"
-    ${Else}
-        DetailPrint "检测到已安装 Node.js: $1"
-    ${EndIf}
-SectionEnd
-
-Section "Claude Code CLI" SEC_CLAUDE_CODE
-    SectionIn 1 3
-    SetOutPath "$INSTDIR"
-
-    ; 检查 npm 是否可用
-    DetailPrint "正在安装 Claude Code CLI..."
-
-    ; 设置 npm 路径
-    ${If} ${FileExists} "$INSTDIR\nodejs\npm.cmd"
-        nsExec::ExecToLog '"$INSTDIR\nodejs\npm.cmd" install -g @anthropic-ai/claude-code'
-    ${Else}
-        nsExec::ExecToLog 'npm install -g @anthropic-ai/claude-code'
-    ${EndIf}
-
-    Pop $0
-    ${If} $0 != 0
-        MessageBox MB_ICONEXCLAMATION "安装 Claude Code CLI 失败！\n请稍后手动运行：npm install -g @anthropic-ai/claude-code"
-    ${Else}
-        DetailPrint "Claude Code CLI 安装成功"
-    ${EndIf}
-SectionEnd
-
-Section "开始菜单快捷方式" SEC_STARTMENU
-    SectionIn 1 2 3
+    ; 创建开始菜单快捷方式
     SetShellVarContext all
     CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"
     CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\Claude Code for Windows.lnk" "$INSTDIR\ClaudeCodeWin.exe"
     CreateShortCut "$SMPROGRAMS\${PRODUCT_NAME}\卸载.lnk" "$INSTDIR\uninstall.exe"
-SectionEnd
 
-Section "桌面快捷方式" SEC_DESKTOP
-    SectionIn 1 3
-    SetShellVarContext all
+    ; 创建桌面快捷方式
     CreateShortCut "$DESKTOP\Claude Code for Windows.lnk" "$INSTDIR\ClaudeCodeWin.exe"
 SectionEnd
-
-;--------------------------------
-; 组件描述
-!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
-    !insertmacro MUI_DESCRIPTION_TEXT ${SEC_MAIN} "Claude Code for Windows 主程序（必需）"
-    !insertmacro MUI_DESCRIPTION_TEXT ${SEC_NODEJS} "Node.js 运行时环境（如果系统未安装则需要）"
-    !insertmacro MUI_DESCRIPTION_TEXT ${SEC_CLAUDE_CODE} "Claude Code 命令行工具"
-    !insertmacro MUI_DESCRIPTION_TEXT ${SEC_STARTMENU} "在开始菜单创建快捷方式"
-    !insertmacro MUI_DESCRIPTION_TEXT ${SEC_DESKTOP} "在桌面创建快捷方式"
-!insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ;--------------------------------
 ; 卸载段
