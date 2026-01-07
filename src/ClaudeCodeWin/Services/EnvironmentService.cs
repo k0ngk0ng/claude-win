@@ -55,10 +55,9 @@ namespace ClaudeCodeWin.Services
             var envVars = Environment.GetEnvironmentVariables();
             foreach (var key in envVars.Keys)
             {
-                var keyStr = key?.ToString();
-                if (keyStr != null && keyStr.StartsWith("ANTHROPIC_"))
+                if (key is string keyStr && keyStr.StartsWith("ANTHROPIC_"))
                 {
-                    var value = envVars[key]?.ToString();
+                    var value = envVars[keyStr]?.ToString();
                     if (!string.IsNullOrEmpty(value))
                     {
                         SetConfigValue(keyStr, value);
