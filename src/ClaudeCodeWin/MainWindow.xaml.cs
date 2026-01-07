@@ -463,18 +463,46 @@ namespace ClaudeCodeWin
 
         private void AppendToTerminal(string text, Color color)
         {
-            var paragraph = TerminalOutput.Document.Blocks.LastBlock as Paragraph;
-            if (paragraph == null)
+            if (string.IsNullOrEmpty(text))
             {
-                paragraph = new Paragraph();
-                TerminalOutput.Document.Blocks.Add(paragraph);
+                // 空文本，添加一个空行
+                var emptyParagraph = new Paragraph();
+                TerminalOutput.Document.Blocks.Add(emptyParagraph);
+                TerminalScrollViewer.ScrollToEnd();
+                return;
             }
 
-            var run = new Run(text)
+            // 按换行符分割文本
+            var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+
+            for (int i = 0; i < lines.Length; i++)
             {
-                Foreground = new SolidColorBrush(color)
-            };
-            paragraph.Inlines.Add(run);
+                var line = lines[i];
+
+                // 获取或创建段落
+                var paragraph = TerminalOutput.Document.Blocks.LastBlock as Paragraph;
+                if (paragraph == null)
+                {
+                    paragraph = new Paragraph { Margin = new Thickness(0) };
+                    TerminalOutput.Document.Blocks.Add(paragraph);
+                }
+
+                if (!string.IsNullOrEmpty(line))
+                {
+                    var run = new Run(line)
+                    {
+                        Foreground = new SolidColorBrush(color)
+                    };
+                    paragraph.Inlines.Add(run);
+                }
+
+                // 如果不是最后一行，创建新段落
+                if (i < lines.Length - 1)
+                {
+                    var newParagraph = new Paragraph { Margin = new Thickness(0) };
+                    TerminalOutput.Document.Blocks.Add(newParagraph);
+                }
+            }
 
             // 自动滚动到底部
             TerminalScrollViewer.ScrollToEnd();

@@ -25,7 +25,7 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 启动 Claude Code（使用非交互模式）
+        /// 启动 Claude Code（交互模式，保持进程运行）
         /// </summary>
         public async Task<bool> StartAsync(string workingDirectory, string? initialCommand = null)
         {
@@ -45,37 +45,6 @@ namespace ClaudeCodeWin.Services
 
             _workingDirectory = workingDirectory;
             _claudePath = claudePath;
-            _isRunning = true;
-
-            if (isDebug)
-            {
-                OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
-                OnOutput?.Invoke($"[DEBUG] Claude Code 初始化");
-                OnOutput?.Invoke($"[DEBUG] Claude 路径: {_claudePath}");
-                OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
-                OnOutput?.Invoke($"[DEBUG] 跳过权限确认: {_envService.Config.SkipPermissions}");
-                OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
-            }
-
-            OnOutput?.Invoke("Claude Code 已就绪，请输入您的问题...\n");
-            return true;
-        }
-
-        private string? _workingDirectory;
-        private string? _claudePath;
-
-        /// <summary>
-        /// 发送输入到 Claude Code（每次发送都是一个独立的请求）
-        /// </summary>
-        public async Task SendInputAsync(string input)
-        {
-            if (!_isRunning || string.IsNullOrEmpty(_claudePath) || string.IsNullOrEmpty(_workingDirectory))
-            {
-                OnError?.Invoke("Claude Code 未启动");
-                return;
-            }
-
-            var isDebug = _envService.Config.GuiDebug == true;
 
             try
             {
@@ -85,7 +54,7 @@ namespace ClaudeCodeWin.Services
                     FileName = "cmd.exe",
                     WorkingDirectory = _workingDirectory,
                     UseShellExecute = false,
-                    RedirectStandardInput = false,
+                    RedirectStandardInput = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true,
@@ -99,7 +68,7 @@ namespace ClaudeCodeWin.Services
                 // 确保 PATH 包含 Node.js
                 EnsureNodeInPath(startInfo);
 
-                // 构建命令行参数
+                // 构建命令行参数 - 交互模式
                 var claudeArgs = new StringBuilder();
 
                 // 添加 --dangerously-skip-permissions 参数
@@ -108,42 +77,28 @@ namespace ClaudeCodeWin.Services
                     claudeArgs.Append("--dangerously-skip-permissions ");
                 }
 
-                // 使用 -p 模式（--print 的简写）
-                claudeArgs.Append("-p ");
-
-                // 添加用户输入 - 对特殊字符进行转义
-                var escapedInput = input.Replace("\"", "\\\"");
-                claudeArgs.Append($"\"{escapedInput}\"");
-
-                // 使用 /C 执行命令后退出
+                // 使用 /K 保持命令窗口运行
                 startInfo.Arguments = $"/C \"\"{_claudePath}\" {claudeArgs}\"";
 
                 if (isDebug)
                 {
                     OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
+                    OnOutput?.Invoke($"[DEBUG] Claude Code 启动");
                     OnOutput?.Invoke($"[DEBUG] Claude 路径: {_claudePath}");
                     OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
                     OnOutput?.Invoke($"[DEBUG] 完整命令: cmd.exe {startInfo.Arguments}");
-                    OnOutput?.Invoke($"[DEBUG] ───────────────────────────────────────────────");
-                    OnOutput?.Invoke($"[DEBUG] 环境变量:");
+                    OnOutput?.Invoke($"[DEBUG] 跳过权限确认: {_envService.Config.SkipPermissions}");
 
                     // 显示相关环境变量
+                    OnOutput?.Invoke($"[DEBUG] 环境变量:");
                     foreach (string key in startInfo.EnvironmentVariables.Keys)
                     {
-                        if (key.StartsWith("ANTHROPIC", StringComparison.OrdinalIgnoreCase) ||
-                            key.Equals("PATH", StringComparison.OrdinalIgnoreCase))
+                        if (key.StartsWith("ANTHROPIC", StringComparison.OrdinalIgnoreCase))
                         {
                             var value = startInfo.EnvironmentVariables[key];
-                            if (key.Equals("PATH", StringComparison.OrdinalIgnoreCase))
+                            if (key.Contains("KEY", StringComparison.OrdinalIgnoreCase) ||
+                                key.Contains("TOKEN", StringComparison.OrdinalIgnoreCase))
                             {
-                                // PATH 太长，只显示前几个
-                                var paths = value?.Split(Path.PathSeparator).Take(5) ?? Array.Empty<string>();
-                                OnOutput?.Invoke($"[DEBUG]   {key}: {string.Join("; ", paths)}...");
-                            }
-                            else if (key.Contains("KEY", StringComparison.OrdinalIgnoreCase) ||
-                                     key.Contains("TOKEN", StringComparison.OrdinalIgnoreCase))
-                            {
-                                // 隐藏敏感信息
                                 OnOutput?.Invoke($"[DEBUG]   {key}: ***");
                             }
                             else
@@ -152,15 +107,11 @@ namespace ClaudeCodeWin.Services
                             }
                         }
                     }
-                    OnOutput?.Invoke($"[DEBUG] ───────────────────────────────────────────────");
-                    OnOutput?.Invoke($"[DEBUG] 正在启动进程...");
+                    OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
                 }
 
                 _process = new Process { StartInfo = startInfo };
                 _process.EnableRaisingEvents = true;
-
-                var outputBuilder = new StringBuilder();
-                var errorBuilder = new StringBuilder();
 
                 _process.OutputDataReceived += (s, e) =>
                 {
@@ -178,39 +129,70 @@ namespace ClaudeCodeWin.Services
                     }
                 };
 
-                var startTime = DateTime.Now;
+                _process.Exited += (s, e) =>
+                {
+                    _isRunning = false;
+                    if (isDebug)
+                    {
+                        OnOutput?.Invoke($"[DEBUG] Claude Code 进程已退出，退出码: {_process?.ExitCode}");
+                    }
+                    OnProcessExited?.Invoke();
+                };
+
                 _process.Start();
                 _process.BeginOutputReadLine();
                 _process.BeginErrorReadLine();
+
+                _isRunning = true;
 
                 if (isDebug)
                 {
                     OnOutput?.Invoke($"[DEBUG] 进程已启动，PID: {_process.Id}");
                 }
 
-                // 等待进程完成，设置超时
-                var completed = await Task.Run(() => _process.WaitForExit(300000)); // 5分钟超时
-
-                var elapsed = DateTime.Now - startTime;
-
-                if (!completed)
-                {
-                    OnError?.Invoke("执行超时（5分钟）");
-                    try { _process.Kill(entireProcessTree: true); } catch { }
-                }
-                else if (isDebug)
-                {
-                    OnOutput?.Invoke($"[DEBUG] ───────────────────────────────────────────────");
-                    OnOutput?.Invoke($"[DEBUG] 进程退出码: {_process.ExitCode}");
-                    OnOutput?.Invoke($"[DEBUG] 执行耗时: {elapsed.TotalSeconds:F2} 秒");
-                    OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
-                }
-
-                OnOutput?.Invoke(""); // 添加空行分隔
+                return true;
             }
             catch (Exception ex)
             {
-                OnError?.Invoke($"执行失败: {ex.Message}");
+                OnError?.Invoke($"启动 Claude Code 失败: {ex.Message}");
+                if (isDebug)
+                {
+                    OnError?.Invoke($"[DEBUG] 异常: {ex.StackTrace}");
+                }
+                return false;
+            }
+        }
+
+        private string? _workingDirectory;
+        private string? _claudePath;
+
+        /// <summary>
+        /// 发送输入到 Claude Code（向持久进程发送）
+        /// </summary>
+        public async Task SendInputAsync(string input)
+        {
+            if (!_isRunning || _process == null || _process.HasExited)
+            {
+                OnError?.Invoke("Claude Code 未运行");
+                return;
+            }
+
+            var isDebug = _envService.Config.GuiDebug == true;
+
+            try
+            {
+                if (isDebug)
+                {
+                    OnOutput?.Invoke($"[DEBUG] 发送输入: {input}");
+                }
+
+                // 向进程的标准输入发送用户输入
+                await _process.StandardInput.WriteLineAsync(input);
+                await _process.StandardInput.FlushAsync();
+            }
+            catch (Exception ex)
+            {
+                OnError?.Invoke($"发送失败: {ex.Message}");
                 if (isDebug)
                 {
                     OnError?.Invoke($"[DEBUG] 异常类型: {ex.GetType().Name}");
