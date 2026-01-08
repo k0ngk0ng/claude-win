@@ -104,6 +104,14 @@ namespace ClaudeCodeWin.Services
                     OnOutput?.Invoke($"[DEBUG] CLI.js: {cliJsPath}");
                     OnOutput?.Invoke($"[DEBUG] 命令行: {commandLine}");
                     OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
+                    if (environment.TryGetValue("CLAUDE_CODE_GIT_BASH_PATH", out var gitBashPath))
+                    {
+                        OnOutput?.Invoke($"[DEBUG] Git Bash: {gitBashPath}");
+                    }
+                    else
+                    {
+                        OnOutput?.Invoke($"[DEBUG] Git Bash: 未设置!");
+                    }
                     OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
                 }
 
