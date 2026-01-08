@@ -131,10 +131,16 @@
 
         // API for C# to call
         window.terminalApi = {
-            // Write data to terminal (Base64 encoded to preserve all bytes)
+            // Write data to terminal (Base64 encoded UTF-8)
             writeBase64: function(base64) {
-                const binary = atob(base64);
-                term.write(binary);
+                // Decode Base64 to binary string, then to UTF-8
+                const binaryString = atob(base64);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const text = new TextDecoder('utf-8').decode(bytes);
+                term.write(text);
             },
 
             // Write data to terminal (legacy, may have encoding issues)
