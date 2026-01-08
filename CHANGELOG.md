@@ -5,12 +5,14 @@ All notable changes to Claude Code for Windows will be documented in this file.
 ## [0.1.26] - 2024-01-08
 
 ### Added
+- Bundled MinGit (Git for Windows) in installer - no separate Git installation required
 - Git Bash auto-detection for Claude Code runtime requirement
 - Git Bash path configuration in settings (CLAUDE_CODE_GIT_BASH_PATH)
 - Settings UI shows auto-detected Git Bash path
+- Debug output now shows Git Bash path
 
 ### Fixed
-- "Claude Code on Windows requires git-bash" error by auto-setting environment variable
+- "Claude Code on Windows requires git-bash" error by bundling Git and auto-setting environment variable
 
 ## [0.1.25] - 2024-01-08
 

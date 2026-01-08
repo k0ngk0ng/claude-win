@@ -14,6 +14,7 @@ on:
 env:
   DOTNET_VERSION: '8.0.x'
   NODE_VERSION: '20.11.1'
+  GIT_VERSION: '2.47.1'
   PROJECT_PATH: src/ClaudeCodeWin/ClaudeCodeWin.csproj
 
 jobs:
@@ -100,6 +101,22 @@ jobs:
           Copy-Item -Path "$env:TEMP/nodejs-extract/node-v${{ env.NODE_VERSION }}-win-x64/*" -Destination $nodePath -Recurse -Force
 
           Write-Host "Node.js extracted to $nodePath"
+
+      - name: Download MinGit for bundling
+        shell: pwsh
+        run: |
+          $gitUrl = "https://github.com/git-for-windows/git/releases/download/v${{ env.GIT_VERSION }}.windows.1/MinGit-${{ env.GIT_VERSION }}-64-bit.zip"
+          $gitPath = "installer/git"
+
+          New-Item -ItemType Directory -Path $gitPath -Force | Out-Null
+
+          Write-Host "Downloading MinGit from $gitUrl"
+          Invoke-WebRequest -Uri $gitUrl -OutFile "$env:TEMP/mingit.zip"
+
+          Write-Host "Extracting MinGit..."
+          Expand-Archive -Path "$env:TEMP/mingit.zip" -DestinationPath $gitPath -Force
+
+          Write-Host "MinGit extracted to $gitPath"
 
       - name: Copy publish files for NSIS
         shell: pwsh

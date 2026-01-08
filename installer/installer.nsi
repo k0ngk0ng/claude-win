@@ -129,6 +129,10 @@ Section "Main Program" SEC_MAIN
     SetOutPath "$INSTDIR\nodejs"
     File /r "nodejs\*.*"
 
+    ; Copy bundled MinGit (for Git Bash)
+    SetOutPath "$INSTDIR\git"
+    File /r "git\*.*"
+
     ; Create data directory
     CreateDirectory "$APPDATA\ClaudeCodeWin"
 
