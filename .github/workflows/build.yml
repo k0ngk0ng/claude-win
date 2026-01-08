@@ -22,7 +22,6 @@ jobs:
 
     outputs:
       version: ${{ steps.version.outputs.version }}
-      changelog: ${{ steps.changelog.outputs.changelog }}
 
     steps:
       - name: Checkout
@@ -48,32 +47,6 @@ jobs:
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "Version: $version"
-
-      - name: Extract changelog for version
-        id: changelog
-        shell: pwsh
-        run: |
-          $version = "${{ steps.version.outputs.version }}"
-          $changelogFile = "CHANGELOG.md"
-
-          if (Test-Path $changelogFile) {
-            $content = Get-Content $changelogFile -Raw
-
-            # Extract section for this version
-            $pattern = "(?s)## \[$version\].*?(?=## \[|$)"
-            if ($content -match $pattern) {
-              $section = $matches[0].Trim()
-              # Escape for GitHub Actions output
-              $section = $section -replace '%', '%25'
-              $section = $section -replace "`n", '%0A'
-              $section = $section -replace "`r", '%0D'
-              echo "changelog=$section" >> $env:GITHUB_OUTPUT
-            } else {
-              echo "changelog=No changelog entry for version $version" >> $env:GITHUB_OUTPUT
-            }
-          } else {
-            echo "changelog=Changelog file not found" >> $env:GITHUB_OUTPUT
-          }
 
       - name: Restore dependencies
         run: dotnet restore ${{ env.PROJECT_PATH }}
@@ -198,33 +171,24 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f
 
-      - name: Read FEATURES.md
-        id: features
-        run: |
-          if [ -f "FEATURES.md" ]; then
-            FEATURES=$(cat FEATURES.md)
-            echo "features<<EOF" >> $GITHUB_OUTPUT
-            echo "$FEATURES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-          else
-            echo "features=Features file not found" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Read CHANGELOG section
+      - name: Extract changelog for this version
         id: changelog
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           if [ -f "CHANGELOG.md" ]; then
-            # Extract the section for this version
-            SECTION=$(awk "/^## \[$VERSION\]/,/^## \[/" CHANGELOG.md | head -n -1)
+            # Extract the section for this version (from ## [version] to next ## [ or end of file)
+            SECTION=$(awk "/^## \[$VERSION\]/,/^## \[/" CHANGELOG.md | sed '$d')
             if [ -z "$SECTION" ]; then
-              SECTION=$(awk "/^## \[$VERSION\]/,EOF" CHANGELOG.md)
+              # If no next section, get to end of file
+              SECTION=$(awk "/^## \[$VERSION\]/,0" CHANGELOG.md)
             fi
+            # Remove the version header line, keep only the content
+            CONTENT=$(echo "$SECTION" | tail -n +2)
             echo "changelog<<EOF" >> $GITHUB_OUTPUT
-            echo "$SECTION" >> $GITHUB_OUTPUT
+            echo "$CONTENT" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           else
-            echo "changelog=Changelog not found" >> $GITHUB_OUTPUT
+            echo "changelog=" >> $GITHUB_OUTPUT
           fi
 
       - name: Create Release
@@ -239,28 +203,21 @@ jobs:
             artifacts/ClaudeCodeWin-framework-dependent/*.zip
             artifacts/ClaudeCodeWin-installer/*.exe
           body: |
-            ## Claude Code for Windows v${{ needs.build.outputs.version }}
+            ## What's Changed in v${{ needs.build.outputs.version }}
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ---
 
             ### Downloads
 
             | File | Description |
             |------|-------------|
             | `ClaudeCodeWin-Setup-*.exe` | **Recommended** - Full installer with bundled Node.js |
-            | `*-portable.zip` | Portable version, self-contained (requires Node.js installed separately) |
-            | `*-framework-dependent.zip` | Lightweight, requires .NET 8 Runtime and Node.js |
+            | `*-portable.zip` | Portable version, self-contained |
+            | `*-framework-dependent.zip` | Lightweight, requires .NET 8 Runtime |
 
-            ### System Requirements
+            ### Requirements
 
-            - Windows 10 version 1809 or later / Windows 11
+            - Windows 10 (1809+) / Windows 11
             - 64-bit system
-            - Installer version includes Node.js, no additional installation needed
-
-            ### Changelog
-
-            ${{ steps.changelog.outputs.changelog }}
-
-            ---
-
-            ### Features
-
-            ${{ steps.features.outputs.features }}
