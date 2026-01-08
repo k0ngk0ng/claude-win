@@ -67,7 +67,7 @@
                             IsEnabled="False"
                             Margin="0,0,8,0"
                             Click="StopButton_Click"/>
-                    <Button x:Name="ImageButton" Content="📎"
+                    <Button x:Name="ImageButton" Content="图片"
                             Style="{StaticResource ModernButton}"
                             ToolTip="插入图片"
                             Margin="0,0,8,0"
