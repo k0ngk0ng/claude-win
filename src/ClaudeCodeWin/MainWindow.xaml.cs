@@ -308,6 +308,35 @@ namespace ClaudeCodeWin
             settingsWindow.ShowDialog();
         }
 
+        private async void ImageButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_claudeService.IsRunning)
+            {
+                await WriteToTerminalAsync("\x1b[33m⚠ 请先启动 Claude Code\x1b[0m\r\n");
+                return;
+            }
+
+            var dialog = new OpenFileDialog
+            {
+                Title = "选择图片",
+                Filter = "图片文件|*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp|所有文件|*.*"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                try
+                {
+                    // Claude Code 支持直接粘贴图片路径
+                    // 发送图片文件路径作为输入
+                    await _claudeService.SendInputAsync(dialog.FileName);
+                }
+                catch (Exception ex)
+                {
+                    await WriteToTerminalAsync($"\x1b[31m发送图片失败: {ex.Message}\x1b[0m\r\n");
+                }
+            }
+        }
+
         private async void SlashCommand_Click(object sender, RoutedEventArgs e)
         {
             if (sender is Button button && button.Tag is string command)
