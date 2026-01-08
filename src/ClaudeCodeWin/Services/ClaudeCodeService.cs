@@ -2,18 +2,22 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using Pty.Net;
 
 namespace ClaudeCodeWin.Services
 {
     /// <summary>
-    /// Claude Code 进程管理服务
+    /// Claude Code 进程管理服务 - 使用伪终端 (ConPTY)
     /// </summary>
     public class ClaudeCodeService : IDisposable
     {
-        private Process? _process;
+        private IPtyConnection? _pty;
         private readonly EnvironmentService _envService;
         private bool _isRunning;
-        private int? _processId; // 保存进程 ID 用于清理
+        private int? _processId;
+        private CancellationTokenSource? _readCts;
+        private string? _workingDirectory;
+        private string? _claudePath;
 
         public event Action<string>? OnOutput;
         public event Action<string>? OnError;
@@ -27,7 +31,7 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 启动 Claude Code（交互模式，保持进程运行）
+        /// 启动 Claude Code（使用伪终端）
         /// </summary>
         public async Task<bool> StartAsync(string workingDirectory, string? initialCommand = null)
         {
@@ -50,115 +54,82 @@ namespace ClaudeCodeWin.Services
 
             try
             {
-                // 使用 cmd.exe 来执行 claude.cmd
-                var startInfo = new ProcessStartInfo
+                // 构建环境变量
+                var environment = new Dictionary<string, string>();
+
+                // 复制当前环境变量
+                foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
                 {
-                    FileName = "cmd.exe",
-                    WorkingDirectory = _workingDirectory,
-                    UseShellExecute = false,
-                    RedirectStandardInput = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    StandardOutputEncoding = Encoding.UTF8,
-                    StandardErrorEncoding = Encoding.UTF8
-                };
-
-                // 应用环境变量
-                _envService.ApplyToProcess(startInfo);
-
-                // 确保 PATH 包含 Node.js
-                EnsureNodeInPath(startInfo);
-
-                // 设置终端相关环境变量，让 Claude Code 正常输出
-                startInfo.EnvironmentVariables["TERM"] = "xterm-256color";
-                startInfo.EnvironmentVariables["FORCE_COLOR"] = "1";
-                startInfo.EnvironmentVariables["COLORTERM"] = "truecolor";
-                // 告诉 Node.js 这是交互式终端
-                startInfo.EnvironmentVariables["NODE_NO_READLINE"] = "0";
-
-                // 构建命令行参数 - 交互模式
-                var claudeArgs = new StringBuilder();
-
-                // 添加 --dangerously-skip-permissions 参数
-                if (_envService.Config.SkipPermissions == true)
-                {
-                    claudeArgs.Append("--dangerously-skip-permissions ");
+                    environment[entry.Key?.ToString() ?? ""] = entry.Value?.ToString() ?? "";
                 }
 
-                // 使用 /C 执行命令
-                startInfo.Arguments = $"/C \"\"{_claudePath}\" {claudeArgs}\"";
+                // 应用用户配置的环境变量
+                var configEnv = _envService.Config.ToDictionary();
+                foreach (var kv in configEnv)
+                {
+                    environment[kv.Key] = kv.Value;
+                }
+
+                // 确保 PATH 包含 Node.js
+                EnsureNodeInPath(environment);
+
+                // 设置终端相关环境变量
+                environment["TERM"] = "xterm-256color";
+                environment["FORCE_COLOR"] = "1";
+                environment["COLORTERM"] = "truecolor";
+
+                // 构建命令行参数
+                var args = new List<string>();
+                if (_envService.Config.SkipPermissions == true)
+                {
+                    args.Add("--dangerously-skip-permissions");
+                }
 
                 if (isDebug)
                 {
                     OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
-                    OnOutput?.Invoke($"[DEBUG] Claude Code 启动");
+                    OnOutput?.Invoke($"[DEBUG] Claude Code 启动 (PTY 模式)");
                     OnOutput?.Invoke($"[DEBUG] Claude 路径: {_claudePath}");
                     OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
-                    OnOutput?.Invoke($"[DEBUG] 完整命令: cmd.exe {startInfo.Arguments}");
-                    OnOutput?.Invoke($"[DEBUG] 跳过权限确认: {_envService.Config.SkipPermissions}");
-
-                    // 显示相关环境变量
-                    OnOutput?.Invoke($"[DEBUG] 环境变量:");
-                    foreach (string key in startInfo.EnvironmentVariables.Keys)
-                    {
-                        if (key.StartsWith("ANTHROPIC", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var value = startInfo.EnvironmentVariables[key];
-                            if (key.Contains("KEY", StringComparison.OrdinalIgnoreCase) ||
-                                key.Contains("TOKEN", StringComparison.OrdinalIgnoreCase))
-                            {
-                                OnOutput?.Invoke($"[DEBUG]   {key}: ***");
-                            }
-                            else
-                            {
-                                OnOutput?.Invoke($"[DEBUG]   {key}: {value}");
-                            }
-                        }
-                    }
+                    OnOutput?.Invoke($"[DEBUG] 参数: {string.Join(" ", args)}");
                     OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
                 }
 
-                _process = new Process { StartInfo = startInfo };
-                _process.EnableRaisingEvents = true;
-
-                _process.OutputDataReceived += (s, e) =>
+                // 使用伪终端启动进程
+                var options = new PtyOptions
                 {
-                    if (e.Data != null)
-                    {
-                        OnOutput?.Invoke(e.Data);
-                    }
+                    Name = "Claude Code",
+                    App = _claudePath,
+                    CommandLine = args.ToArray(),
+                    Cwd = _workingDirectory,
+                    Environment = environment,
+                    Rows = 40,
+                    Cols = 120
                 };
 
-                _process.ErrorDataReceived += (s, e) =>
-                {
-                    if (e.Data != null)
-                    {
-                        OnError?.Invoke(e.Data);
-                    }
-                };
+                _pty = await PtyProvider.SpawnAsync(options, CancellationToken.None);
+                _processId = _pty.Pid;
+                _isRunning = true;
 
-                _process.Exited += (s, e) =>
+                if (isDebug)
+                {
+                    OnOutput?.Invoke($"[DEBUG] 进程已启动，PID: {_processId}");
+                }
+
+                // 监听进程退出
+                _pty.ProcessExited += (sender, exitCode) =>
                 {
                     _isRunning = false;
                     if (isDebug)
                     {
-                        OnOutput?.Invoke($"[DEBUG] Claude Code 进程已退出，退出码: {_process?.ExitCode}");
+                        OnOutput?.Invoke($"[DEBUG] Claude Code 进程已退出，退出码: {exitCode}");
                     }
                     OnProcessExited?.Invoke();
                 };
 
-                _process.Start();
-                _process.BeginOutputReadLine();
-                _process.BeginErrorReadLine();
-
-                _isRunning = true;
-                _processId = _process.Id; // 保存进程 ID
-
-                if (isDebug)
-                {
-                    OnOutput?.Invoke($"[DEBUG] 进程已启动，PID: {_process.Id}");
-                }
+                // 启动读取输出的任务
+                _readCts = new CancellationTokenSource();
+                _ = ReadOutputAsync(_readCts.Token);
 
                 return true;
             }
@@ -173,15 +144,129 @@ namespace ClaudeCodeWin.Services
             }
         }
 
-        private string? _workingDirectory;
-        private string? _claudePath;
+        /// <summary>
+        /// 异步读取伪终端输出
+        /// </summary>
+        private async Task ReadOutputAsync(CancellationToken cancellationToken)
+        {
+            if (_pty == null) return;
+
+            var buffer = new byte[4096];
+            var decoder = Encoding.UTF8.GetDecoder();
+            var charBuffer = new char[4096];
+
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested && _isRunning)
+                {
+                    var bytesRead = await _pty.ReaderStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    if (bytesRead > 0)
+                    {
+                        var charCount = decoder.GetChars(buffer, 0, bytesRead, charBuffer, 0);
+                        var text = new string(charBuffer, 0, charCount);
+
+                        // 处理 ANSI 转义序列（简单过滤，保留文本）
+                        text = ProcessAnsiOutput(text);
+
+                        if (!string.IsNullOrEmpty(text))
+                        {
+                            OnOutput?.Invoke(text);
+                        }
+                    }
+                    else
+                    {
+                        // 流结束
+                        break;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // 正常取消
+            }
+            catch (Exception ex)
+            {
+                var isDebug = _envService.Config.GuiDebug == true;
+                if (isDebug)
+                {
+                    OnError?.Invoke($"[DEBUG] 读取输出异常: {ex.Message}");
+                }
+            }
+        }
 
         /// <summary>
-        /// 发送输入到 Claude Code（向持久进程发送）
+        /// 处理 ANSI 转义序列
+        /// </summary>
+        private string ProcessAnsiOutput(string text)
+        {
+            // 移除常见的 ANSI 控制序列，保留文本
+            // CSI 序列: ESC [ ...
+            var result = new StringBuilder();
+            int i = 0;
+            while (i < text.Length)
+            {
+                if (text[i] == '\x1b' && i + 1 < text.Length)
+                {
+                    // ESC 序列开始
+                    if (text[i + 1] == '[')
+                    {
+                        // CSI 序列，跳过直到遇到字母
+                        i += 2;
+                        while (i < text.Length && !char.IsLetter(text[i]))
+                        {
+                            i++;
+                        }
+                        if (i < text.Length)
+                        {
+                            i++; // 跳过终止字母
+                        }
+                    }
+                    else if (text[i + 1] == ']')
+                    {
+                        // OSC 序列，跳过直到 BEL 或 ST
+                        i += 2;
+                        while (i < text.Length && text[i] != '\x07' && text[i] != '\x1b')
+                        {
+                            i++;
+                        }
+                        if (i < text.Length)
+                        {
+                            if (text[i] == '\x07')
+                            {
+                                i++; // 跳过 BEL
+                            }
+                            else if (text[i] == '\x1b' && i + 1 < text.Length && text[i + 1] == '\\')
+                            {
+                                i += 2; // 跳过 ST
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // 其他 ESC 序列，跳过两个字符
+                        i += 2;
+                    }
+                }
+                else if (text[i] == '\r')
+                {
+                    // 跳过 CR，只保留 LF
+                    i++;
+                }
+                else
+                {
+                    result.Append(text[i]);
+                    i++;
+                }
+            }
+            return result.ToString();
+        }
+
+        /// <summary>
+        /// 发送输入到 Claude Code
         /// </summary>
         public async Task SendInputAsync(string input)
         {
-            if (!_isRunning || _process == null || _process.HasExited)
+            if (!_isRunning || _pty == null)
             {
                 OnError?.Invoke("Claude Code 未运行");
                 return;
@@ -196,9 +281,10 @@ namespace ClaudeCodeWin.Services
                     OnOutput?.Invoke($"[DEBUG] 发送输入: {input}");
                 }
 
-                // 向进程的标准输入发送用户输入
-                await _process.StandardInput.WriteLineAsync(input);
-                await _process.StandardInput.FlushAsync();
+                // 向伪终端发送输入（加上换行符）
+                var bytes = Encoding.UTF8.GetBytes(input + "\n");
+                await _pty.WriterStream.WriteAsync(bytes, 0, bytes.Length);
+                await _pty.WriterStream.FlushAsync();
             }
             catch (Exception ex)
             {
@@ -212,45 +298,48 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 停止 Claude Code，杀掉所有相关进程
+        /// 调整终端大小
+        /// </summary>
+        public void Resize(int cols, int rows)
+        {
+            try
+            {
+                _pty?.Resize(cols, rows);
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 停止 Claude Code
         /// </summary>
         public void Stop()
         {
             _isRunning = false;
+            _readCts?.Cancel();
 
-            if (_process != null)
+            if (_pty != null)
             {
                 try
                 {
-                    if (!_process.HasExited)
-                    {
-                        // 先尝试关闭标准输入，让进程正常退出
-                        try
-                        {
-                            _process.StandardInput.Close();
-                        }
-                        catch { }
-
-                        // 等待一小段时间让进程自行退出
-                        if (!_process.WaitForExit(1000))
-                        {
-                            // 如果还没退出，强制杀掉整个进程树
-                            _process.Kill(entireProcessTree: true);
-                        }
-                    }
-                }
-                catch
-                {
-                    // 进程可能已经退出
-                }
-
-                // 额外清理：杀掉可能残留的 node.exe 进程
-                try
-                {
-                    KillRelatedProcesses();
+                    _pty.Kill();
                 }
                 catch { }
+
+                try
+                {
+                    _pty.Dispose();
+                }
+                catch { }
+
+                _pty = null;
             }
+
+            // 额外清理
+            try
+            {
+                KillRelatedProcesses();
+            }
+            catch { }
         }
 
         /// <summary>
@@ -261,7 +350,6 @@ namespace ClaudeCodeWin.Services
             if (!_processId.HasValue)
                 return;
 
-            // 使用 taskkill 命令强制杀掉进程树
             try
             {
                 var killProcess = new Process
@@ -281,38 +369,11 @@ namespace ClaudeCodeWin.Services
             }
             catch { }
 
-            // 清理可能残留的 node.exe 进程（通过命令行参数判断）
-            try
-            {
-                foreach (var proc in Process.GetProcessesByName("node"))
-                {
-                    try
-                    {
-                        // 尝试获取命令行参数
-                        using var searcher = new System.Management.ManagementObjectSearcher(
-                            $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {proc.Id}");
-
-                        foreach (var obj in searcher.Get())
-                        {
-                            var cmdLine = obj["CommandLine"]?.ToString() ?? "";
-                            // 检查是否包含 claude 相关路径
-                            if (cmdLine.Contains("claude", StringComparison.OrdinalIgnoreCase) ||
-                                cmdLine.Contains("@anthropic-ai", StringComparison.OrdinalIgnoreCase))
-                            {
-                                proc.Kill(entireProcessTree: true);
-                            }
-                        }
-                    }
-                    catch { }
-                }
-            }
-            catch { }
-
             _processId = null;
         }
 
         /// <summary>
-        /// 查找 Claude Code 可执行文件路径（只使用内置路径）
+        /// 查找 Claude Code 可执行文件路径
         /// </summary>
         private string? FindClaudeCodePath()
         {
@@ -328,7 +389,7 @@ namespace ClaudeCodeWin.Services
             possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "claude.cmd"));
             possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "claude"));
 
-            // npm 全局目录（使用内置 npm 安装的位置）
+            // npm 全局目录
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             possiblePaths.Add(Path.Combine(appData, "npm", "claude.cmd"));
             possiblePaths.Add(Path.Combine(appData, "npm", "claude"));
@@ -336,36 +397,22 @@ namespace ClaudeCodeWin.Services
             return possiblePaths.FirstOrDefault(File.Exists);
         }
 
-        private string? GetConfiguredPath()
-        {
-            var configPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "ClaudeCodeWin",
-                "claude-path.txt"
-            );
-            if (File.Exists(configPath))
-            {
-                return File.ReadAllText(configPath).Trim();
-            }
-            return null;
-        }
-
         /// <summary>
-        /// 设置内置 Node.js 到 PATH（只使用内置路径）
+        /// 确保 PATH 包含 Node.js
         /// </summary>
-        private void EnsureNodeInPath(ProcessStartInfo startInfo)
+        private void EnsureNodeInPath(Dictionary<string, string> environment)
         {
             var nodePaths = new List<string>();
 
-            // 应用程序目录下的内置 Node.js（优先）
             var appDir = AppDomain.CurrentDomain.BaseDirectory;
             nodePaths.Add(Path.Combine(appDir, "nodejs"));
 
-            // 安装目录下的内置 Node.js
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             nodePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs"));
 
-            // 构建新的 PATH，内置 Node.js 优先
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            nodePaths.Add(Path.Combine(appData, "npm"));
+
             var pathParts = new List<string>();
             foreach (var nodePath in nodePaths)
             {
@@ -375,29 +422,23 @@ namespace ClaudeCodeWin.Services
                 }
             }
 
-            // 添加 npm 全局目录
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            var npmPath = Path.Combine(appData, "npm");
-            if (Directory.Exists(npmPath))
+            // 添加原有 PATH（排除其他 Node.js）
+            if (environment.TryGetValue("PATH", out var currentPath) ||
+                environment.TryGetValue("Path", out currentPath))
             {
-                pathParts.Add(npmPath);
-            }
-
-            // 最后添加原有的 PATH（但排除其他 Node.js 路径）
-            var currentPath = Environment.GetEnvironmentVariable("PATH") ?? "";
-            foreach (var part in currentPath.Split(Path.PathSeparator))
-            {
-                // 排除系统的 Node.js 路径，只使用我们的内置版本
-                if (!string.IsNullOrEmpty(part) &&
-                    !part.Contains("nodejs", StringComparison.OrdinalIgnoreCase) &&
-                    !part.Contains("nvm", StringComparison.OrdinalIgnoreCase) &&
-                    !part.Contains("node_modules", StringComparison.OrdinalIgnoreCase))
+                foreach (var part in currentPath.Split(Path.PathSeparator))
                 {
-                    pathParts.Add(part);
+                    if (!string.IsNullOrEmpty(part) &&
+                        !part.Contains("nodejs", StringComparison.OrdinalIgnoreCase) &&
+                        !part.Contains("nvm", StringComparison.OrdinalIgnoreCase) &&
+                        !part.Contains("node_modules", StringComparison.OrdinalIgnoreCase))
+                    {
+                        pathParts.Add(part);
+                    }
                 }
             }
 
-            startInfo.EnvironmentVariables["PATH"] = string.Join(Path.PathSeparator.ToString(), pathParts);
+            environment["PATH"] = string.Join(Path.PathSeparator.ToString(), pathParts);
         }
 
         /// <summary>
@@ -434,10 +475,7 @@ namespace ClaudeCodeWin.Services
                     return output;
                 }
             }
-            catch
-            {
-                // Node.js 未安装
-            }
+            catch { }
             return null;
         }
 
@@ -458,7 +496,6 @@ namespace ClaudeCodeWin.Services
                     CreateNoWindow = true
                 };
 
-                // 确保 Node.js 在 PATH 中
                 var nodeDir = Path.GetDirectoryName(GetNodeExecutablePath());
                 if (!string.IsNullOrEmpty(nodeDir))
                 {
@@ -474,48 +511,31 @@ namespace ClaudeCodeWin.Services
                     return output;
                 }
             }
-            catch
-            {
-                // npm 未安装
-            }
+            catch { }
             return null;
         }
 
-        /// <summary>
-        /// 获取 Node.js 可执行文件路径（只使用内置 Node.js）
-        /// </summary>
         private static string? GetNodeExecutablePath()
         {
             var possiblePaths = new List<string>();
-
-            // 应用程序目录下的内置 Node.js（优先）
             var appDir = AppDomain.CurrentDomain.BaseDirectory;
             possiblePaths.Add(Path.Combine(appDir, "nodejs", "node.exe"));
 
-            // 安装目录下的内置 Node.js
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "node.exe"));
 
-            // 只使用内置 Node.js，不使用系统 Node.js
             return possiblePaths.FirstOrDefault(File.Exists);
         }
 
-        /// <summary>
-        /// 获取 npm 可执行文件路径（只使用内置 npm）
-        /// </summary>
         private static string? GetNpmExecutablePath()
         {
             var possiblePaths = new List<string>();
-
-            // 应用程序目录下的内置 npm（优先）
             var appDir = AppDomain.CurrentDomain.BaseDirectory;
             possiblePaths.Add(Path.Combine(appDir, "nodejs", "npm.cmd"));
 
-            // 安装目录下的内置 npm
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "npm.cmd"));
 
-            // 只使用内置 npm，不使用系统 npm
             return possiblePaths.FirstOrDefault(File.Exists);
         }
 
@@ -544,7 +564,6 @@ namespace ClaudeCodeWin.Services
                     StandardErrorEncoding = Encoding.UTF8
                 };
 
-                // 确保 Node.js 在 PATH 中
                 var nodeDir = Path.GetDirectoryName(GetNodeExecutablePath());
                 if (!string.IsNullOrEmpty(nodeDir))
                 {
@@ -560,10 +579,7 @@ namespace ClaudeCodeWin.Services
                         while (!process.StandardOutput.EndOfStream)
                         {
                             var line = await process.StandardOutput.ReadLineAsync();
-                            if (line != null)
-                            {
-                                onOutput?.Invoke(line);
-                            }
+                            if (line != null) onOutput?.Invoke(line);
                         }
                     });
 
@@ -572,10 +588,7 @@ namespace ClaudeCodeWin.Services
                         while (!process.StandardError.EndOfStream)
                         {
                             var line = await process.StandardError.ReadLineAsync();
-                            if (line != null)
-                            {
-                                onOutput?.Invoke(line);
-                            }
+                            if (line != null) onOutput?.Invoke(line);
                         }
                     });
 
@@ -584,7 +597,6 @@ namespace ClaudeCodeWin.Services
 
                     if (process.ExitCode == 0)
                     {
-                        // 验证安装，获取版本号
                         var version = await GetClaudeVersionAsync(nodeDir, onOutput);
                         if (!string.IsNullOrEmpty(version))
                         {
@@ -605,9 +617,6 @@ namespace ClaudeCodeWin.Services
             }
         }
 
-        /// <summary>
-        /// 获取 Claude Code 版本
-        /// </summary>
         private static async Task<string?> GetClaudeVersionAsync(string? nodeDir, Action<string>? onOutput = null)
         {
             try
@@ -657,30 +666,23 @@ namespace ClaudeCodeWin.Services
             return null;
         }
 
-        /// <summary>
-        /// 静态方法查找 Claude Code 路径
-        /// </summary>
         private static string? FindClaudeCodePathStatic(string? nodeDir)
         {
             var possiblePaths = new List<string>();
 
-            // npm 全局目录（在 node 目录下）
             if (!string.IsNullOrEmpty(nodeDir))
             {
                 possiblePaths.Add(Path.Combine(nodeDir, "claude.cmd"));
                 possiblePaths.Add(Path.Combine(nodeDir, "claude"));
             }
 
-            // npm 全局目录
             var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             possiblePaths.Add(Path.Combine(appData, "npm", "claude.cmd"));
             possiblePaths.Add(Path.Combine(appData, "npm", "claude"));
 
-            // 应用程序目录
             var appDir = AppDomain.CurrentDomain.BaseDirectory;
             possiblePaths.Add(Path.Combine(appDir, "nodejs", "claude.cmd"));
 
-            // 安装目录
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "claude.cmd"));
 
@@ -690,7 +692,7 @@ namespace ClaudeCodeWin.Services
         public void Dispose()
         {
             Stop();
-            _process?.Dispose();
+            _readCts?.Dispose();
         }
     }
 }
