@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -34,6 +35,9 @@ namespace ClaudeCodeWin
             // 设置默认工作目录
             WorkingDirectoryBox.Text = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 
+            // 显示版本号
+            VersionText.Text = GetVersionString();
+
             // 显示欢迎消息
             AppendToTerminal("欢迎使用 Claude Code for Windows!\n", Colors.LightGreen);
             AppendToTerminal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Colors.Gray);
@@ -61,6 +65,18 @@ namespace ClaudeCodeWin
                     AppendToTerminal($" (npm {npmVersion})", Colors.Gray);
                 }
                 AppendToTerminal("\n", Colors.White);
+            }
+
+            // 检查 Git Bash
+            var gitBashPath = ClaudeCodeService.FindGitBashPath();
+            if (string.IsNullOrEmpty(gitBashPath))
+            {
+                AppendToTerminal("✗ Git Bash 未找到\n", Colors.Red);
+                AppendToTerminal("  Claude Code 需要 Git Bash，请检查安装\n", Colors.Yellow);
+            }
+            else
+            {
+                AppendToTerminal($"✓ Git Bash: {gitBashPath}\n", Colors.LightGreen);
             }
 
             // 检查 Claude Code
@@ -534,6 +550,37 @@ namespace ClaudeCodeWin
             // 确保杀掉所有相关进程
             _claudeService.Dispose();
             base.OnClosed(e);
+        }
+
+        /// <summary>
+        /// 获取版本字符串
+        /// 优先使用 InformationalVersion（包含 git tag），否则使用 AssemblyVersion
+        /// </summary>
+        private static string GetVersionString()
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+
+            // 尝试获取 InformationalVersion（可包含 git tag 或 commit）
+            var infoVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (!string.IsNullOrEmpty(infoVersion))
+            {
+                // 移除可能的 +buildmetadata 部分，只保留版本号
+                var plusIndex = infoVersion.IndexOf('+');
+                if (plusIndex > 0)
+                {
+                    infoVersion = infoVersion.Substring(0, plusIndex);
+                }
+                return $"v{infoVersion}";
+            }
+
+            // 回退到 AssemblyVersion
+            var version = assembly.GetName().Version;
+            if (version != null)
+            {
+                return $"v{version.Major}.{version.Minor}.{version.Build}";
+            }
+
+            return "";
         }
     }
 }

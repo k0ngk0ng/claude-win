@@ -2,6 +2,15 @@
 
 All notable changes to Claude Code for Windows will be documented in this file.
 
+## [0.1.28] - 2024-01-08
+
+### Added
+- Version number display in UI header (shows git tag or assembly version)
+- Git Bash status check in welcome message
+
+### Changed
+- Improved startup diagnostics to show Git Bash detection result
+
 ## [0.1.27] - 2024-01-08
 
 ### Added
