@@ -28,7 +28,6 @@ SetCompressor /SOLID lzma
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 !include "LogicLib.nsh"
-!include "NSISdl.nsh"
 
 ;--------------------------------
 ; MUI Settings
@@ -129,39 +128,33 @@ Section "Main Program" SEC_MAIN
     ; Create data directory
     CreateDirectory "$APPDATA\ClaudeCodeWin"
 
-    ; Download and extract Node.js
+    ; Download Node.js using PowerShell
     DetailPrint "Downloading Node.js v${NODE_VERSION}..."
-    NSISdl::download "${NODE_URL}" "$TEMP\nodejs.zip"
+    nsExec::ExecToStack 'powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri \"${NODE_URL}\" -OutFile \"$TEMP\nodejs.zip\""'
     Pop $0
-    ${If} $0 != "success"
-        MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to download Node.js: $0$\n$\nPlease check your internet connection and try again."
+    ${If} $0 != 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to download Node.js. Please check your internet connection and try again."
         Abort
     ${EndIf}
 
     DetailPrint "Extracting Node.js..."
-    SetOutPath "$INSTDIR\nodejs"
-    nsExec::ExecToStack 'powershell -Command "Expand-Archive -Path $TEMP\nodejs.zip -DestinationPath $TEMP\nodejs-extract -Force; Copy-Item -Path $TEMP\nodejs-extract\node-v${NODE_VERSION}-win-x64\* -Destination $INSTDIR\nodejs -Recurse -Force"'
+    nsExec::ExecToStack 'powershell -ExecutionPolicy Bypass -Command "Expand-Archive -Path \"$TEMP\nodejs.zip\" -DestinationPath \"$TEMP\nodejs-extract\" -Force; Copy-Item -Path \"$TEMP\nodejs-extract\node-v${NODE_VERSION}-win-x64\*\" -Destination \"$INSTDIR\nodejs\" -Recurse -Force"'
     Pop $0
     Delete "$TEMP\nodejs.zip"
 
-    ; Download and extract Git
+    ; Download Git using PowerShell
     DetailPrint "Downloading Git v${GIT_VERSION}..."
-    NSISdl::download "${GIT_URL}" "$TEMP\portablegit.7z.exe"
+    nsExec::ExecToStack 'powershell -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri \"${GIT_URL}\" -OutFile \"$TEMP\portablegit.7z.exe\""'
     Pop $0
-    ${If} $0 != "success"
-        MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to download Git: $0$\n$\nPlease check your internet connection and try again."
+    ${If} $0 != 0
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to download Git. Please check your internet connection and try again."
         Abort
     ${EndIf}
 
-    DetailPrint "Extracting Git..."
-    SetOutPath "$INSTDIR\git"
-    nsExec::ExecToStack '7z x "$TEMP\portablegit.7z.exe" -o"$INSTDIR\git" -y'
+    DetailPrint "Extracting Git (this may take a while)..."
+    ; Use the self-extracting exe with -y for silent extraction
+    nsExec::ExecToStack '"$TEMP\portablegit.7z.exe" -o"$INSTDIR\git" -y'
     Pop $0
-    ${If} $0 != 0
-        ; Try using PowerShell with 7z if system 7z is not available
-        nsExec::ExecToStack 'powershell -Command "& { $7z = (Get-Command 7z -ErrorAction SilentlyContinue).Source; if ($7z) { & $7z x $env:TEMP\portablegit.7z.exe -o$INSTDIR\git -y } else { Write-Error \"7z not found\" } }"'
-        Pop $0
-    ${EndIf}
     Delete "$TEMP\portablegit.7z.exe"
 
     ; Write uninstall info
