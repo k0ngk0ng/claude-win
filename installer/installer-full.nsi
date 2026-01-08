@@ -1,4 +1,5 @@
-; Claude Code for Windows Installer
+; Claude Code for Windows Installer - FULL VERSION
+; Includes bundled Node.js and Git
 ; NSIS Script
 
 ;--------------------------------
@@ -55,7 +56,7 @@ SetCompressor /SOLID lzma
 ;--------------------------------
 ; Installer properties
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "ClaudeCodeWin-Setup-${PRODUCT_VERSION}.exe"
+OutFile "ClaudeCodeWin-Full-${PRODUCT_VERSION}.exe"
 InstallDir "$PROGRAMFILES64\ClaudeCodeWin"
 InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
 ShowInstDetails show
@@ -67,15 +68,13 @@ RequestExecutionLevel admin
 
 ; Check if application is running and kill it (silently)
 Function CheckAndKillProcess
-    ; Try to find and kill the process silently (don't show "process not found" errors)
     nsExec::ExecToStack 'taskkill /F /IM ${PRODUCT_EXE}'
-    Pop $0  ; Return value
-    Pop $1  ; Output (discard)
-    ; Wait a moment for process to terminate
+    Pop $0
+    Pop $1
     Sleep 500
 FunctionEnd
 
-; Uninstall version - check and kill process (silently)
+; Uninstall version
 Function un.CheckAndKillProcess
     nsExec::ExecToStack 'taskkill /F /IM ${PRODUCT_EXE}'
     Pop $0
@@ -86,7 +85,6 @@ FunctionEnd
 ;--------------------------------
 ; Installer init
 Function .onInit
-    ; Check if application is running
     FindWindow $0 "" "Claude Code for Windows"
     ${If} $0 != 0
         MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION \
@@ -129,7 +127,7 @@ Section "Main Program" SEC_MAIN
     SetOutPath "$INSTDIR\nodejs"
     File /r "nodejs\*.*"
 
-    ; Copy bundled MinGit (for Git Bash)
+    ; Copy bundled Git (PortableGit with bash.exe)
     SetOutPath "$INSTDIR\git"
     File /r "git\*.*"
 
@@ -164,22 +162,17 @@ SectionEnd
 ;--------------------------------
 ; Uninstall section
 Section "Uninstall"
-    ; Kill process before uninstall
     Call un.CheckAndKillProcess
 
-    ; Delete program files
     RMDir /r "$INSTDIR"
 
-    ; Delete shortcuts
     SetShellVarContext all
     Delete "$DESKTOP\Claude Code for Windows.lnk"
     RMDir /r "$SMPROGRAMS\${PRODUCT_NAME}"
 
-    ; Delete registry keys
     DeleteRegKey ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}"
     DeleteRegKey HKLM "${PRODUCT_DIR_REGKEY}"
 
-    ; Ask to delete config
     MessageBox MB_YESNO "Delete configuration files?" IDNO skip_config
         RMDir /r "$APPDATA\ClaudeCodeWin"
     skip_config:
@@ -191,9 +184,9 @@ SectionEnd
 ; Version info
 VIProductVersion "${PRODUCT_VERSION}.0"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
-VIAddVersionKey "Comments" "Windows Claude Code Client"
+VIAddVersionKey "Comments" "Windows Claude Code Client - Full Version"
 VIAddVersionKey "CompanyName" "${PRODUCT_PUBLISHER}"
 VIAddVersionKey "LegalCopyright" "Copyright (C) 2024"
-VIAddVersionKey "FileDescription" "${PRODUCT_NAME} Setup"
+VIAddVersionKey "FileDescription" "${PRODUCT_NAME} Setup (Full)"
 VIAddVersionKey "FileVersion" "${PRODUCT_VERSION}"
 VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"

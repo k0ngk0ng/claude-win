@@ -2,6 +2,16 @@
 
 All notable changes to Claude Code for Windows will be documented in this file.
 
+## [0.1.30] - 2024-01-08
+
+### Added
+- Two installer versions: Full (bundled) and Lite (downloads during install)
+  - **Full**: Includes Node.js + PortableGit (~350MB), works offline
+  - **Lite**: Downloads dependencies during installation (~15MB)
+
+### Fixed
+- Use PortableGit instead of MinGit (MinGit doesn't include bash.exe)
+
 ## [0.1.29] - 2024-01-08
 
 ### Fixed

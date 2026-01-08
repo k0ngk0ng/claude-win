@@ -84,7 +84,7 @@ jobs:
           choco install nsis -y
           echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
-      - name: Download Node.js for bundling
+      - name: Download Node.js for bundling (Full version)
         shell: pwsh
         run: |
           $nodeUrl = "https://nodejs.org/dist/v${{ env.NODE_VERSION }}/node-v${{ env.NODE_VERSION }}-win-x64.zip"
@@ -102,7 +102,7 @@ jobs:
 
           Write-Host "Node.js extracted to $nodePath"
 
-      - name: Download PortableGit for bundling
+      - name: Download PortableGit for bundling (Full version)
         shell: pwsh
         run: |
           $gitUrl = "https://github.com/git-for-windows/git/releases/download/v${{ env.GIT_VERSION }}.windows.1/PortableGit-${{ env.GIT_VERSION }}-64-bit.7z.exe"
@@ -114,7 +114,6 @@ jobs:
           Invoke-WebRequest -Uri $gitUrl -OutFile "$env:TEMP/portablegit.7z.exe"
 
           Write-Host "Extracting PortableGit..."
-          # PortableGit is a self-extracting 7z archive, use 7z to extract
           7z x "$env:TEMP/portablegit.7z.exe" -o"$gitPath" -y
 
           Write-Host "PortableGit extracted to $gitPath"
@@ -134,19 +133,34 @@ jobs:
           New-Item -ItemType Directory -Path "installer/publish" -Force | Out-Null
           Copy-Item -Path "publish/self-contained/*" -Destination "installer/publish" -Recurse -Force
 
-      - name: Update NSIS version
+      - name: Update NSIS version in both installers
         shell: pwsh
         run: |
-          $nsiFile = "installer/installer.nsi"
-          $content = Get-Content $nsiFile -Raw
-          $content = $content -replace '!define PRODUCT_VERSION ".*"', '!define PRODUCT_VERSION "${{ steps.version.outputs.version }}"'
-          Set-Content -Path $nsiFile -Value $content
+          $version = "${{ steps.version.outputs.version }}"
 
-      - name: Build NSIS Installer
+          # Update Full installer
+          $fullNsi = "installer/installer-full.nsi"
+          $content = Get-Content $fullNsi -Raw
+          $content = $content -replace '!define PRODUCT_VERSION ".*"', "!define PRODUCT_VERSION `"$version`""
+          Set-Content -Path $fullNsi -Value $content
+
+          # Update Lite installer
+          $liteNsi = "installer/installer-lite.nsi"
+          $content = Get-Content $liteNsi -Raw
+          $content = $content -replace '!define PRODUCT_VERSION ".*"', "!define PRODUCT_VERSION `"$version`""
+          Set-Content -Path $liteNsi -Value $content
+
+      - name: Build NSIS Installer (Full)
         shell: pwsh
         run: |
           cd installer
-          makensis /V3 installer.nsi
+          makensis /V3 installer-full.nsi
+
+      - name: Build NSIS Installer (Lite)
+        shell: pwsh
+        run: |
+          cd installer
+          makensis /V3 installer-lite.nsi
 
       - name: Create portable ZIP
         shell: pwsh
@@ -170,12 +184,20 @@ jobs:
           name: ClaudeCodeWin-framework-dependent
           path: ClaudeCodeWin-${{ steps.version.outputs.version }}-framework-dependent.zip
 
-      - name: Upload installer artifact
+      - name: Upload Full installer artifact
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
-          name: ClaudeCodeWin-installer
-          path: installer/ClaudeCodeWin-Setup-*.exe
+          name: ClaudeCodeWin-installer-full
+          path: installer/ClaudeCodeWin-Full-*.exe
+          if-no-files-found: ignore
+
+      - name: Upload Lite installer artifact
+        uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: ClaudeCodeWin-installer-lite
+          path: installer/ClaudeCodeWin-Lite-*.exe
           if-no-files-found: ignore
 
   release:
@@ -203,13 +225,10 @@ jobs:
         run: |
           VERSION="${{ needs.build.outputs.version }}"
           if [ -f "CHANGELOG.md" ]; then
-            # Extract the section for this version (from ## [version] to next ## [ or end of file)
             SECTION=$(awk "/^## \[$VERSION\]/,/^## \[/" CHANGELOG.md | sed '$d')
             if [ -z "$SECTION" ]; then
-              # If no next section, get to end of file
               SECTION=$(awk "/^## \[$VERSION\]/,0" CHANGELOG.md)
             fi
-            # Remove the version header line, keep only the content
             CONTENT=$(echo "$SECTION" | tail -n +2)
             echo "changelog<<EOF" >> $GITHUB_OUTPUT
             echo "$CONTENT" >> $GITHUB_OUTPUT
@@ -228,7 +247,8 @@ jobs:
           files: |
             artifacts/ClaudeCodeWin-portable/*.zip
             artifacts/ClaudeCodeWin-framework-dependent/*.zip
-            artifacts/ClaudeCodeWin-installer/*.exe
+            artifacts/ClaudeCodeWin-installer-full/*.exe
+            artifacts/ClaudeCodeWin-installer-lite/*.exe
           body: |
             ## What's Changed in v${{ needs.build.outputs.version }}
 
@@ -240,9 +260,10 @@ jobs:
 
             | File | Description |
             |------|-------------|
-            | `ClaudeCodeWin-Setup-*.exe` | **Recommended** - Full installer with bundled Node.js |
-            | `*-portable.zip` | Portable version, self-contained |
-            | `*-framework-dependent.zip` | Lightweight, requires .NET 8 Runtime |
+            | `ClaudeCodeWin-Full-*.exe` | **Recommended** - Full installer with bundled Node.js + Git (~350MB) |
+            | `ClaudeCodeWin-Lite-*.exe` | Lite installer - downloads Node.js + Git during installation (~15MB) |
+            | `*-portable.zip` | Portable version, self-contained (requires Git installed) |
+            | `*-framework-dependent.zip` | Lightweight, requires .NET 8 Runtime + Git |
 
             ### Requirements
 
