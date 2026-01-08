@@ -197,7 +197,7 @@
 
                 <!-- 调试配置分组 -->
                 <Border Background="{StaticResource BackgroundMedium}"
-                        CornerRadius="8" Padding="16">
+                        CornerRadius="8" Padding="16" Margin="0,0,0,12">
                     <StackPanel>
                         <TextBlock Text="调试配置" FontSize="16" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentColor}" Margin="0,0,0,12"/>
@@ -224,6 +224,35 @@
                                 <ComboBoxItem Content="warn"/>
                                 <ComboBoxItem Content="error"/>
                             </ComboBox>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 环境配置分组 -->
+                <Border Background="{StaticResource BackgroundMedium}"
+                        CornerRadius="8" Padding="16">
+                    <StackPanel>
+                        <TextBlock Text="环境配置" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentColor}" Margin="0,0,0,12"/>
+
+                        <!-- CLAUDE_CODE_GIT_BASH_PATH -->
+                        <StackPanel>
+                            <TextBlock Text="CLAUDE_CODE_GIT_BASH_PATH" FontWeight="Medium"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock Text="Git Bash 路径（留空则自动检测）"
+                                       Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,2,0,4"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="GitBashPathBox" Grid.Column="0" Style="{StaticResource ModernTextBox}"/>
+                                <Button Grid.Column="1" Content="..." Width="40" Margin="4,0,0,0"
+                                        Style="{StaticResource ModernButton}"
+                                        Click="BrowseGitBashPath_Click"/>
+                            </Grid>
+                            <TextBlock x:Name="GitBashAutoDetectLabel"
+                                       Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,4,0,0"/>
                         </StackPanel>
                     </StackPanel>
                 </Border>

@@ -133,6 +133,14 @@ namespace ClaudeCodeWin.Models
         [JsonProperty("GUI_DEBUG")]
         public bool? GuiDebug { get; set; }
 
+        // === Git Bash 配置 ===
+
+        /// <summary>
+        /// Git Bash 路径（Claude Code 需要）
+        /// </summary>
+        [JsonProperty("CLAUDE_CODE_GIT_BASH_PATH")]
+        public string? GitBashPath { get; set; }
+
         // === 自定义配置 ===
 
         /// <summary>
@@ -195,6 +203,9 @@ namespace ClaudeCodeWin.Models
 
             if (!string.IsNullOrEmpty(LogLevel))
                 dict["ANTHROPIC_LOG_LEVEL"] = LogLevel;
+
+            if (!string.IsNullOrEmpty(GitBashPath))
+                dict["CLAUDE_CODE_GIT_BASH_PATH"] = GitBashPath;
 
             // 添加自定义变量
             foreach (var kv in CustomVariables)

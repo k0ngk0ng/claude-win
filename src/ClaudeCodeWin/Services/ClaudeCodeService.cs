@@ -80,6 +80,9 @@ namespace ClaudeCodeWin.Services
                 // 确保 PATH 包含 Node.js
                 EnsureNodeInPath(environment);
 
+                // 确保 Git Bash 路径已设置（Claude Code 需要）
+                EnsureGitBashPath(environment);
+
                 // 设置终端相关环境变量
                 environment["TERM"] = "xterm-256color";
                 environment["FORCE_COLOR"] = "1";
@@ -550,6 +553,98 @@ namespace ClaudeCodeWin.Services
             }
 
             environment["PATH"] = string.Join(Path.PathSeparator.ToString(), pathParts);
+        }
+
+        /// <summary>
+        /// 确保 Git Bash 路径已设置
+        /// </summary>
+        private void EnsureGitBashPath(Dictionary<string, string> environment)
+        {
+            // 如果已经通过配置或环境变量设置了，直接使用
+            if (environment.ContainsKey("CLAUDE_CODE_GIT_BASH_PATH"))
+            {
+                return;
+            }
+
+            // 自动检测 Git Bash 路径
+            var gitBashPath = FindGitBashPath();
+            if (!string.IsNullOrEmpty(gitBashPath))
+            {
+                environment["CLAUDE_CODE_GIT_BASH_PATH"] = gitBashPath;
+            }
+        }
+
+        /// <summary>
+        /// 查找 Git Bash 可执行文件路径
+        /// </summary>
+        public static string? FindGitBashPath()
+        {
+            var possiblePaths = new List<string>();
+
+            // 常见的 Git Bash 安装位置
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+            // Git for Windows 默认安装路径
+            possiblePaths.Add(Path.Combine(programFiles, "Git", "bin", "bash.exe"));
+            possiblePaths.Add(Path.Combine(programFilesX86, "Git", "bin", "bash.exe"));
+
+            // Git for Windows (usr/bin)
+            possiblePaths.Add(Path.Combine(programFiles, "Git", "usr", "bin", "bash.exe"));
+            possiblePaths.Add(Path.Combine(programFilesX86, "Git", "usr", "bin", "bash.exe"));
+
+            // Portable Git
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            possiblePaths.Add(Path.Combine(localAppData, "Programs", "Git", "bin", "bash.exe"));
+            possiblePaths.Add(Path.Combine(localAppData, "Programs", "Git", "usr", "bin", "bash.exe"));
+
+            // Scoop 安装
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            possiblePaths.Add(Path.Combine(userProfile, "scoop", "apps", "git", "current", "bin", "bash.exe"));
+            possiblePaths.Add(Path.Combine(userProfile, "scoop", "apps", "git", "current", "usr", "bin", "bash.exe"));
+
+            // Chocolatey 安装
+            possiblePaths.Add(Path.Combine(programFiles, "Git", "bin", "bash.exe"));
+
+            // 检查 PATH 环境变量中是否能找到 git，如果能找到就用同目录的 bash
+            var pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (!string.IsNullOrEmpty(pathEnv))
+            {
+                foreach (var pathDir in pathEnv.Split(Path.PathSeparator))
+                {
+                    if (string.IsNullOrEmpty(pathDir)) continue;
+
+                    var gitExe = Path.Combine(pathDir, "git.exe");
+                    if (File.Exists(gitExe))
+                    {
+                        // 找到 git，尝试在同目录或相关目录找 bash
+                        var bashInSameDir = Path.Combine(pathDir, "bash.exe");
+                        if (File.Exists(bashInSameDir))
+                        {
+                            possiblePaths.Insert(0, bashInSameDir);
+                        }
+
+                        // 尝试 ../bin/bash.exe
+                        var parentDir = Path.GetDirectoryName(pathDir);
+                        if (parentDir != null)
+                        {
+                            var bashInBin = Path.Combine(parentDir, "bin", "bash.exe");
+                            if (File.Exists(bashInBin))
+                            {
+                                possiblePaths.Insert(0, bashInBin);
+                            }
+
+                            var bashInUsrBin = Path.Combine(parentDir, "usr", "bin", "bash.exe");
+                            if (File.Exists(bashInUsrBin))
+                            {
+                                possiblePaths.Insert(0, bashInUsrBin);
+                            }
+                        }
+                    }
+                }
+            }
+
+            return possiblePaths.FirstOrDefault(File.Exists);
         }
 
         /// <summary>

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using ClaudeCodeWin.Services;
+using Microsoft.Win32;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -61,6 +62,20 @@ namespace ClaudeCodeWin.Views
                         break;
                     }
                 }
+            }
+
+            // Git Bash 路径
+            GitBashPathBox.Text = config.GitBashPath ?? "";
+
+            // 显示自动检测结果
+            var autoDetectedPath = ClaudeCodeService.FindGitBashPath();
+            if (!string.IsNullOrEmpty(autoDetectedPath))
+            {
+                GitBashAutoDetectLabel.Text = $"自动检测: {autoDetectedPath}";
+            }
+            else
+            {
+                GitBashAutoDetectLabel.Text = "未检测到 Git Bash，请安装 Git for Windows";
             }
         }
 
@@ -199,6 +214,9 @@ namespace ClaudeCodeWin.Views
             var selectedLogLevel = (LogLevelCombo.SelectedItem as ComboBoxItem)?.Content?.ToString();
             config.LogLevel = string.IsNullOrEmpty(selectedLogLevel) ? null : selectedLogLevel;
 
+            // Git Bash 路径
+            config.GitBashPath = string.IsNullOrEmpty(GitBashPathBox.Text) ? null : GitBashPathBox.Text;
+
             // 保存
             _envService.Save();
 
@@ -207,6 +225,29 @@ namespace ClaudeCodeWin.Views
 
             this.DialogResult = true;
             this.Close();
+        }
+
+        private void BrowseGitBashPath_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new OpenFileDialog
+            {
+                Filter = "bash.exe|bash.exe|All Executables|*.exe",
+                Title = "选择 Git Bash 可执行文件",
+                CheckFileExists = true
+            };
+
+            // 尝试设置初始目录
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var gitDir = System.IO.Path.Combine(programFiles, "Git", "bin");
+            if (System.IO.Directory.Exists(gitDir))
+            {
+                dialog.InitialDirectory = gitDir;
+            }
+
+            if (dialog.ShowDialog() == true)
+            {
+                GitBashPathBox.Text = dialog.FileName;
+            }
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e)
