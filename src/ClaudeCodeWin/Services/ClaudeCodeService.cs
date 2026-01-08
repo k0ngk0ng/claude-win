@@ -337,6 +337,9 @@ namespace ClaudeCodeWin.Services
             _isRunning = false;
             _readCts?.Cancel();
 
+            // 先保存 PID，因为清理后 _ptySession 会变成 null
+            int? pid = _ptySession?.ProcessId;
+
             if (_ptySession != null)
             {
                 try
@@ -354,24 +357,29 @@ namespace ClaudeCodeWin.Services
                 _ptySession = null;
             }
 
-            // 额外清理
+            // 使用保存的 PID 进行额外清理
+            if (pid.HasValue)
+            {
+                try
+                {
+                    KillProcessTree(pid.Value);
+                }
+                catch { }
+            }
+
+            // 额外清理可能残留的 node 进程
             try
             {
-                KillRelatedProcesses();
+                KillOrphanedNodeProcesses();
             }
             catch { }
         }
 
         /// <summary>
-        /// 杀掉可能残留的相关进程
+        /// 杀掉进程树
         /// </summary>
-        private void KillRelatedProcesses()
+        private void KillProcessTree(int pid)
         {
-            if (_ptySession == null)
-                return;
-
-            var pid = _ptySession.ProcessId;
-
             try
             {
                 var killProcess = new Process
@@ -390,6 +398,56 @@ namespace ClaudeCodeWin.Services
                 killProcess.WaitForExit(3000);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// 清理可能残留的 node 进程（只清理我们启动的）
+        /// </summary>
+        private void KillOrphanedNodeProcesses()
+        {
+            try
+            {
+                // 查找包含 claude 的 node 进程
+                var processes = Process.GetProcessesByName("node");
+                foreach (var process in processes)
+                {
+                    try
+                    {
+                        // 检查命令行是否包含 claude
+                        var commandLine = GetProcessCommandLine(process.Id);
+                        if (commandLine != null &&
+                            (commandLine.Contains("claude", StringComparison.OrdinalIgnoreCase) ||
+                             commandLine.Contains("@anthropic-ai", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            process.Kill();
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        process.Dispose();
+                    }
+                }
+            }
+            catch { }
+        }
+
+        /// <summary>
+        /// 获取进程命令行
+        /// </summary>
+        private string? GetProcessCommandLine(int processId)
+        {
+            try
+            {
+                using var searcher = new System.Management.ManagementObjectSearcher(
+                    $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {processId}");
+                foreach (var obj in searcher.Get())
+                {
+                    return obj["CommandLine"]?.ToString();
+                }
+            }
+            catch { }
+            return null;
         }
 
         /// <summary>
@@ -560,6 +618,15 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
+        /// 获取用户 npm 全局目录（用于安装包，避免 Program Files 权限问题）
+        /// </summary>
+        private static string GetUserNpmGlobalPath()
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(appData, "npm");
+        }
+
+        /// <summary>
         /// 安装 Claude Code CLI
         /// </summary>
         public static async Task<(bool success, string message)> InstallClaudeCodeAsync(Action<string>? onOutput = null)
@@ -569,13 +636,22 @@ namespace ClaudeCodeWin.Services
                 var npmPath = GetNpmExecutablePath();
                 if (string.IsNullOrEmpty(npmPath))
                 {
-                    return (false, "找不到 npm，请确保已安装 Node.js");
+                    return (false, "Cannot find npm. Please ensure Node.js is installed.");
                 }
+
+                // 使用用户目录作为 npm 全局安装路径，避免 Program Files 权限问题
+                var userNpmPath = GetUserNpmGlobalPath();
+                if (!Directory.Exists(userNpmPath))
+                {
+                    Directory.CreateDirectory(userNpmPath);
+                }
+
+                onOutput?.Invoke($"Installing to user directory: {userNpmPath}");
 
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = npmPath,
-                    Arguments = "install -g @anthropic-ai/claude-code --registry=https://registry.npmmirror.com",
+                    Arguments = $"install -g @anthropic-ai/claude-code --prefix \"{userNpmPath}\" --registry=https://registry.npmmirror.com",
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -590,6 +666,9 @@ namespace ClaudeCodeWin.Services
                     startInfo.EnvironmentVariables["PATH"] = nodeDir + Path.PathSeparator +
                         Environment.GetEnvironmentVariable("PATH");
                 }
+
+                // 设置 npm prefix 环境变量
+                startInfo.EnvironmentVariables["npm_config_prefix"] = userNpmPath;
 
                 using var process = Process.Start(startInfo);
                 if (process != null)
@@ -620,20 +699,20 @@ namespace ClaudeCodeWin.Services
                         var version = await GetClaudeVersionAsync(nodeDir, onOutput);
                         if (!string.IsNullOrEmpty(version))
                         {
-                            return (true, $"Claude Code 安装成功！版本: {version}");
+                            return (true, $"Claude Code installed successfully! Version: {version}");
                         }
-                        return (true, "Claude Code 安装成功！");
+                        return (true, "Claude Code installed successfully!");
                     }
                     else
                     {
-                        return (false, $"安装失败，退出码: {process.ExitCode}");
+                        return (false, $"Installation failed with exit code: {process.ExitCode}");
                     }
                 }
-                return (false, "无法启动 npm 进程");
+                return (false, "Failed to start npm process");
             }
             catch (Exception ex)
             {
-                return (false, $"安装失败: {ex.Message}");
+                return (false, $"Installation failed: {ex.Message}");
             }
         }
 
@@ -644,7 +723,7 @@ namespace ClaudeCodeWin.Services
                 var claudePath = FindClaudeCodePathStatic(nodeDir);
                 if (string.IsNullOrEmpty(claudePath))
                 {
-                    onOutput?.Invoke("⚠ 未找到 claude 命令");
+                    onOutput?.Invoke("⚠ Claude command not found");
                     return null;
                 }
 
@@ -681,7 +760,7 @@ namespace ClaudeCodeWin.Services
             }
             catch (Exception ex)
             {
-                onOutput?.Invoke($"⚠ 验证失败: {ex.Message}");
+                onOutput?.Invoke($"⚠ Verification failed: {ex.Message}");
             }
             return null;
         }

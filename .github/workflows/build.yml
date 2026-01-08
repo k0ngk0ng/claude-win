@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号 (如 1.0.0)'
+        description: 'Version number (e.g. 1.0.0)'
         required: true
         type: string
 
@@ -22,6 +22,7 @@ jobs:
 
     outputs:
       version: ${{ steps.version.outputs.version }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
 
     steps:
       - name: Checkout
@@ -47,6 +48,32 @@ jobs:
           }
           echo "version=$version" >> $env:GITHUB_OUTPUT
           echo "Version: $version"
+
+      - name: Extract changelog for version
+        id: changelog
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $changelogFile = "CHANGELOG.md"
+
+          if (Test-Path $changelogFile) {
+            $content = Get-Content $changelogFile -Raw
+
+            # Extract section for this version
+            $pattern = "(?s)## \[$version\].*?(?=## \[|$)"
+            if ($content -match $pattern) {
+              $section = $matches[0].Trim()
+              # Escape for GitHub Actions output
+              $section = $section -replace '%', '%25'
+              $section = $section -replace "`n", '%0A'
+              $section = $section -replace "`r", '%0D'
+              echo "changelog=$section" >> $env:GITHUB_OUTPUT
+            } else {
+              echo "changelog=No changelog entry for version $version" >> $env:GITHUB_OUTPUT
+            }
+          } else {
+            echo "changelog=Changelog file not found" >> $env:GITHUB_OUTPUT
+          }
 
       - name: Restore dependencies
         run: dotnet restore ${{ env.PROJECT_PATH }}
@@ -160,6 +187,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -168,14 +198,42 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f
 
+      - name: Read FEATURES.md
+        id: features
+        run: |
+          if [ -f "FEATURES.md" ]; then
+            FEATURES=$(cat FEATURES.md)
+            echo "features<<EOF" >> $GITHUB_OUTPUT
+            echo "$FEATURES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "features=Features file not found" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Read CHANGELOG section
+        id: changelog
+        run: |
+          VERSION="${{ needs.build.outputs.version }}"
+          if [ -f "CHANGELOG.md" ]; then
+            # Extract the section for this version
+            SECTION=$(awk "/^## \[$VERSION\]/,/^## \[/" CHANGELOG.md | head -n -1)
+            if [ -z "$SECTION" ]; then
+              SECTION=$(awk "/^## \[$VERSION\]/,EOF" CHANGELOG.md)
+            fi
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "$SECTION" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog=Changelog not found" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          name: Claude Code for Windows ${{ needs.build.outputs.version }}
+          name: Claude Code for Windows v${{ needs.build.outputs.version }}
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('v{0}', needs.build.outputs.version) }}
           draft: ${{ github.event_name == 'workflow_dispatch' }}
           prerelease: ${{ contains(needs.build.outputs.version, 'alpha') || contains(needs.build.outputs.version, 'beta') || contains(needs.build.outputs.version, 'rc') }}
-          generate_release_notes: true
           files: |
             artifacts/ClaudeCodeWin-portable/*.zip
             artifacts/ClaudeCodeWin-framework-dependent/*.zip
@@ -183,32 +241,26 @@ jobs:
           body: |
             ## Claude Code for Windows v${{ needs.build.outputs.version }}
 
-            ### 下载说明
+            ### Downloads
 
-            | 文件 | 说明 |
-            |------|------|
-            | `ClaudeCodeWin-Setup-*.exe` | **推荐** - 完整安装程序，内置 Node.js 运行时 |
-            | `*-portable.zip` | 便携版，自包含所有依赖，解压即用（需自行安装 Node.js） |
-            | `*-framework-dependent.zip` | 轻量版，需要系统已安装 .NET 8 Runtime 和 Node.js |
+            | File | Description |
+            |------|-------------|
+            | `ClaudeCodeWin-Setup-*.exe` | **Recommended** - Full installer with bundled Node.js |
+            | `*-portable.zip` | Portable version, self-contained (requires Node.js installed separately) |
+            | `*-framework-dependent.zip` | Lightweight, requires .NET 8 Runtime and Node.js |
 
-            ### 系统要求
+            ### System Requirements
 
-            - Windows 10/11 (64位)
-            - 安装程序版本已内置 Node.js，无需额外安装
+            - Windows 10 version 1809 or later / Windows 11
+            - 64-bit system
+            - Installer version includes Node.js, no additional installation needed
 
-            ### 首次使用
+            ### Changelog
 
-            1. 下载并运行安装程序
-            2. 启动 Claude Code for Windows
-            3. 程序会自动安装 Claude Code CLI（使用国内镜像加速）
-            4. 点击 **设置** 配置 API 密钥
-            5. 选择工作目录，点击启动
+            ${{ steps.changelog.outputs.changelog }}
 
-            ### 功能特性
+            ---
 
-            - 内置 Node.js 运行时
-            - 自动安装 Claude Code CLI
-            - 斜杠命令快捷按钮
-            - 图片上传和粘贴支持
-            - 环境变量可视化配置
-            - JSON 配置导入
+            ### Features
+
+            ${{ steps.features.outputs.features }}
