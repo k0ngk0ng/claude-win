@@ -102,21 +102,31 @@ jobs:
 
           Write-Host "Node.js extracted to $nodePath"
 
-      - name: Download MinGit for bundling
+      - name: Download PortableGit for bundling
         shell: pwsh
         run: |
-          $gitUrl = "https://github.com/git-for-windows/git/releases/download/v${{ env.GIT_VERSION }}.windows.1/MinGit-${{ env.GIT_VERSION }}-64-bit.zip"
+          $gitUrl = "https://github.com/git-for-windows/git/releases/download/v${{ env.GIT_VERSION }}.windows.1/PortableGit-${{ env.GIT_VERSION }}-64-bit.7z.exe"
           $gitPath = "installer/git"
 
           New-Item -ItemType Directory -Path $gitPath -Force | Out-Null
 
-          Write-Host "Downloading MinGit from $gitUrl"
-          Invoke-WebRequest -Uri $gitUrl -OutFile "$env:TEMP/mingit.zip"
+          Write-Host "Downloading PortableGit from $gitUrl"
+          Invoke-WebRequest -Uri $gitUrl -OutFile "$env:TEMP/portablegit.7z.exe"
 
-          Write-Host "Extracting MinGit..."
-          Expand-Archive -Path "$env:TEMP/mingit.zip" -DestinationPath $gitPath -Force
+          Write-Host "Extracting PortableGit..."
+          # PortableGit is a self-extracting 7z archive, use 7z to extract
+          7z x "$env:TEMP/portablegit.7z.exe" -o"$gitPath" -y
 
-          Write-Host "MinGit extracted to $gitPath"
+          Write-Host "PortableGit extracted to $gitPath"
+
+          # Verify bash.exe exists
+          $bashPath = Join-Path $gitPath "usr/bin/bash.exe"
+          if (Test-Path $bashPath) {
+              Write-Host "✓ bash.exe found at $bashPath"
+          } else {
+              Write-Host "✗ bash.exe NOT found!"
+              Get-ChildItem -Path $gitPath -Recurse -Filter "bash.exe" | ForEach-Object { Write-Host $_.FullName }
+          }
 
       - name: Copy publish files for NSIS
         shell: pwsh

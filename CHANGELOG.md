@@ -2,6 +2,12 @@
 
 All notable changes to Claude Code for Windows will be documented in this file.
 
+## [0.1.29] - 2024-01-08
+
+### Fixed
+- Use PortableGit instead of MinGit (MinGit doesn't include bash.exe)
+- Git Bash now properly bundled in installer
+
 ## [0.1.28] - 2024-01-08
 
 ### Added
