@@ -2,15 +2,22 @@
 
 All notable changes to Claude Code for Windows will be documented in this file.
 
+## [0.1.25] - 2024-01-08
+
+### Changed
+- Image upload button style improved (fixed vertical line display issue)
+
+### Fixed
+- "node is not recognized" error when running Claude Code
+- Now uses node.exe directly to run CLI.js instead of claude.cmd
+
 ## [0.1.24] - 2024-01-08
 
 ### Added
 - CHANGELOG.md for version history tracking
-- FEATURES.md for release notes automation
 - User npm directory installation to avoid permission issues
 
 ### Changed
-- Release notes now include changelog and features from markdown files
 - npm packages now install to user AppData directory (avoids Program Files EPERM errors)
 - Improved process cleanup on application close
 - Installer now silently handles process checks (no "process not found" messages)

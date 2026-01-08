@@ -40,15 +40,24 @@ namespace ClaudeCodeWin.Services
 
             var isDebug = _envService.Config.GuiDebug == true;
 
-            var claudePath = FindClaudeCodePath();
-            if (string.IsNullOrEmpty(claudePath))
+            // 获取 Node.js 路径
+            var nodePath = GetNodeExecutablePath();
+            if (string.IsNullOrEmpty(nodePath))
             {
-                OnError?.Invoke("找不到 Claude Code。请确保已通过 npm install -g @anthropic-ai/claude-code 安装。");
+                OnError?.Invoke("Cannot find Node.js. Please reinstall the application.");
+                return false;
+            }
+
+            // 获取 Claude CLI.js 路径
+            var cliJsPath = FindClaudeCliJsPath();
+            if (string.IsNullOrEmpty(cliJsPath))
+            {
+                OnError?.Invoke("Cannot find Claude Code. Please run: npm install -g @anthropic-ai/claude-code");
                 return false;
             }
 
             _workingDirectory = workingDirectory;
-            _claudePath = claudePath;
+            _claudePath = cliJsPath;
 
             try
             {
@@ -76,18 +85,20 @@ namespace ClaudeCodeWin.Services
                 environment["FORCE_COLOR"] = "1";
                 environment["COLORTERM"] = "truecolor";
 
-                // 构建命令行
-                var args = new List<string> { _claudePath };
+                // 构建命令行：直接用 node.exe 运行 CLI.js
+                var args = new List<string> { $"\"{nodePath}\"", $"\"{cliJsPath}\"" };
                 if (_envService.Config.SkipPermissions == true)
                 {
                     args.Add("--dangerously-skip-permissions");
                 }
-                var commandLine = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+                var commandLine = string.Join(" ", args);
 
                 if (isDebug)
                 {
                     OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
                     OnOutput?.Invoke($"[DEBUG] Claude Code 启动 (ConPTY 模式)");
+                    OnOutput?.Invoke($"[DEBUG] Node.js: {nodePath}");
+                    OnOutput?.Invoke($"[DEBUG] CLI.js: {cliJsPath}");
                     OnOutput?.Invoke($"[DEBUG] 命令行: {commandLine}");
                     OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
                     OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
@@ -119,10 +130,10 @@ namespace ClaudeCodeWin.Services
             }
             catch (Exception ex)
             {
-                OnError?.Invoke($"启动 Claude Code 失败: {ex.Message}");
+                OnError?.Invoke($"Failed to start Claude Code: {ex.Message}");
                 if (isDebug)
                 {
-                    OnError?.Invoke($"[DEBUG] 异常: {ex.StackTrace}");
+                    OnError?.Invoke($"[DEBUG] Exception: {ex.StackTrace}");
                 }
                 return false;
             }
@@ -451,7 +462,29 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 查找 Claude Code 可执行文件路径
+        /// 查找 Claude Code CLI.js 文件路径
+        /// </summary>
+        private string? FindClaudeCliJsPath()
+        {
+            var possiblePaths = new List<string>();
+
+            // 用户 npm 全局目录（我们安装的位置）
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            possiblePaths.Add(Path.Combine(appData, "npm", "node_modules", "@anthropic-ai", "claude-code", "cli.js"));
+
+            // 应用程序目录下的内置 Claude
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            possiblePaths.Add(Path.Combine(appDir, "nodejs", "node_modules", "@anthropic-ai", "claude-code", "cli.js"));
+
+            // 安装目录下的内置 Claude
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            possiblePaths.Add(Path.Combine(programFiles, "ClaudeCodeWin", "nodejs", "node_modules", "@anthropic-ai", "claude-code", "cli.js"));
+
+            return possiblePaths.FirstOrDefault(File.Exists);
+        }
+
+        /// <summary>
+        /// 查找 Claude Code 可执行文件路径（用于检测是否已安装）
         /// </summary>
         private string? FindClaudeCodePath()
         {
@@ -525,7 +558,7 @@ namespace ClaudeCodeWin.Services
         public static bool IsInstalled()
         {
             var service = new ClaudeCodeService(new EnvironmentService());
-            return service.FindClaudeCodePath() != null;
+            return service.FindClaudeCliJsPath() != null;
         }
 
         /// <summary>
