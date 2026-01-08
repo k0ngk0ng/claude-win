@@ -3,8 +3,6 @@ using System.Reflection;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
-using System.Windows.Media.Imaging;
 using ClaudeCodeWin.Services;
 using ClaudeCodeWin.Views;
 using Microsoft.Web.WebView2.Core;
@@ -17,9 +15,6 @@ namespace ClaudeCodeWin
     {
         private readonly EnvironmentService _envService;
         private readonly ClaudeCodeService _claudeService;
-        private readonly List<string> _commandHistory = new();
-        private int _historyIndex = -1;
-        private readonly List<string> _pendingImagePaths = new();
         private bool _terminalReady = false;
         private int _terminalCols = 120;
         private int _terminalRows = 30;
@@ -152,9 +147,9 @@ namespace ClaudeCodeWin
         {
             if (!_terminalReady || TerminalWebView.CoreWebView2 == null) return;
 
-            // 转义字符串用于 JavaScript
-            var escaped = JsonConvert.SerializeObject(text);
-            await TerminalWebView.CoreWebView2.ExecuteScriptAsync($"window.terminalApi.write({escaped})");
+            // 使用 Base64 编码确保所有字节正确传输（包括 \r 等控制字符）
+            var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+            await TerminalWebView.CoreWebView2.ExecuteScriptAsync($"window.terminalApi.writeBase64('{base64}')");
         }
 
         private async Task CheckInstallationAsync()
@@ -270,7 +265,6 @@ namespace ClaudeCodeWin
 
             StartButton.IsEnabled = false;
             StopButton.IsEnabled = true;
-            InputBox.IsEnabled = true;
             WorkingDirectoryBox.IsEnabled = false;
 
             await WriteToTerminalAsync($"\r\n\x1b[36m启动 Claude Code...\x1b[0m\r\n");
@@ -288,7 +282,6 @@ namespace ClaudeCodeWin
             {
                 StartButton.IsEnabled = true;
                 StopButton.IsEnabled = false;
-                InputBox.IsEnabled = false;
                 WorkingDirectoryBox.IsEnabled = true;
             }
             else
@@ -323,241 +316,8 @@ namespace ClaudeCodeWin
                     return;
                 }
 
-                _commandHistory.Add(command);
-                _historyIndex = -1;
                 await _claudeService.SendInputAsync(command);
             }
-        }
-
-        private void AddImageButton_Click(object sender, RoutedEventArgs e)
-        {
-            var dialog = new OpenFileDialog
-            {
-                Title = "选择图片",
-                Filter = "图片文件|*.png;*.jpg;*.jpeg;*.gif;*.bmp;*.webp|所有文件|*.*",
-                Multiselect = true
-            };
-
-            if (dialog.ShowDialog() == true)
-            {
-                foreach (var filePath in dialog.FileNames)
-                {
-                    AddImageAttachment(filePath);
-                }
-            }
-        }
-
-        private void AddImageAttachment(string filePath)
-        {
-            if (!File.Exists(filePath))
-                return;
-
-            _pendingImagePaths.Add(filePath);
-            UpdateAttachmentPreview();
-        }
-
-        private void UpdateAttachmentPreview()
-        {
-            AttachmentList.Items.Clear();
-
-            foreach (var imagePath in _pendingImagePaths)
-            {
-                var fileName = Path.GetFileName(imagePath);
-                var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(4, 0, 4, 0) };
-
-                // 缩略图
-                try
-                {
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit();
-                    bitmap.UriSource = new Uri(imagePath);
-                    bitmap.DecodePixelWidth = 32;
-                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                    bitmap.EndInit();
-
-                    var image = new Image { Source = bitmap, Width = 24, Height = 24, Margin = new Thickness(0, 0, 4, 0) };
-                    panel.Children.Add(image);
-                }
-                catch
-                {
-                    panel.Children.Add(new TextBlock { Text = "🖼", VerticalAlignment = VerticalAlignment.Center });
-                }
-
-                panel.Children.Add(new TextBlock
-                {
-                    Text = fileName.Length > 20 ? fileName.Substring(0, 17) + "..." : fileName,
-                    Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    FontSize = 11
-                });
-
-                // 删除按钮
-                var removeBtn = new Button
-                {
-                    Content = "×",
-                    FontSize = 10,
-                    Padding = new Thickness(4, 0, 4, 0),
-                    Margin = new Thickness(4, 0, 0, 0),
-                    Background = System.Windows.Media.Brushes.Transparent,
-                    Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray),
-                    BorderThickness = new Thickness(0),
-                    Cursor = Cursors.Hand,
-                    Tag = imagePath
-                };
-                removeBtn.Click += RemoveAttachment_Click;
-                panel.Children.Add(removeBtn);
-
-                AttachmentList.Items.Add(panel);
-            }
-
-            AttachmentPreviewBorder.Visibility = _pendingImagePaths.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        private void RemoveAttachment_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is Button btn && btn.Tag is string path)
-            {
-                _pendingImagePaths.Remove(path);
-                UpdateAttachmentPreview();
-            }
-        }
-
-        private void InputBox_PreviewKeyDown(object sender, KeyEventArgs e)
-        {
-            // 处理 Ctrl+V 粘贴图片
-            if (e.Key == Key.V && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
-            {
-                if (Clipboard.ContainsImage())
-                {
-                    e.Handled = true;
-                    PasteImageFromClipboard();
-                }
-                else if (Clipboard.ContainsFileDropList())
-                {
-                    var files = Clipboard.GetFileDropList();
-                    foreach (string? file in files)
-                    {
-                        if (file != null && IsImageFile(file))
-                        {
-                            e.Handled = true;
-                            AddImageAttachment(file);
-                        }
-                    }
-                }
-            }
-        }
-
-        private bool IsImageFile(string path)
-        {
-            var ext = Path.GetExtension(path).ToLower();
-            return ext == ".png" || ext == ".jpg" || ext == ".jpeg" ||
-                   ext == ".gif" || ext == ".bmp" || ext == ".webp";
-        }
-
-        private async void PasteImageFromClipboard()
-        {
-            try
-            {
-                var image = Clipboard.GetImage();
-                if (image == null) return;
-
-                // 保存到临时文件
-                var tempDir = Path.Combine(Path.GetTempPath(), "ClaudeCodeWin");
-                if (!Directory.Exists(tempDir))
-                    Directory.CreateDirectory(tempDir);
-
-                var tempPath = Path.Combine(tempDir, $"clipboard_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-
-                using (var fileStream = new FileStream(tempPath, FileMode.Create))
-                {
-                    var encoder = new PngBitmapEncoder();
-                    encoder.Frames.Add(BitmapFrame.Create(image));
-                    encoder.Save(fileStream);
-                }
-
-                AddImageAttachment(tempPath);
-                await WriteToTerminalAsync("\x1b[90m📋 已粘贴剪贴板图片\x1b[0m\r\n");
-            }
-            catch (Exception ex)
-            {
-                await WriteToTerminalAsync($"\x1b[33m⚠ 粘贴图片失败: {ex.Message}\x1b[0m\r\n");
-            }
-        }
-
-        private async void SendButton_Click(object sender, RoutedEventArgs e)
-        {
-            await SendInput();
-        }
-
-        private async void InputBox_KeyDown(object sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
-            {
-                e.Handled = true;
-                await SendInput();
-            }
-            else if (e.Key == Key.Up)
-            {
-                // 历史记录向上
-                if (_commandHistory.Count > 0 && _historyIndex < _commandHistory.Count - 1)
-                {
-                    _historyIndex++;
-                    InputBox.Text = _commandHistory[_commandHistory.Count - 1 - _historyIndex];
-                    InputBox.CaretIndex = InputBox.Text.Length;
-                }
-                e.Handled = true;
-            }
-            else if (e.Key == Key.Down)
-            {
-                // 历史记录向下
-                if (_historyIndex > 0)
-                {
-                    _historyIndex--;
-                    InputBox.Text = _commandHistory[_commandHistory.Count - 1 - _historyIndex];
-                    InputBox.CaretIndex = InputBox.Text.Length;
-                }
-                else if (_historyIndex == 0)
-                {
-                    _historyIndex = -1;
-                    InputBox.Text = "";
-                }
-                e.Handled = true;
-            }
-        }
-
-        private async Task SendInput()
-        {
-            var input = InputBox.Text;
-
-            // 如果有附件但没有文本，也允许发送
-            if (string.IsNullOrWhiteSpace(input) && _pendingImagePaths.Count == 0)
-                return;
-
-            // 添加到历史记录
-            if (!string.IsNullOrWhiteSpace(input))
-            {
-                _commandHistory.Add(input);
-                _historyIndex = -1;
-            }
-
-            // 构建发送内容
-            var messageToSend = input ?? "";
-
-            // 如果有图片附件，添加图片路径
-            if (_pendingImagePaths.Count > 0)
-            {
-                foreach (var imagePath in _pendingImagePaths)
-                {
-                    messageToSend += $" {imagePath}";
-                }
-
-                // 清除附件
-                _pendingImagePaths.Clear();
-                UpdateAttachmentPreview();
-            }
-
-            InputBox.Text = "";
-            await _claudeService.SendInputAsync(messageToSend);
         }
 
         private void OnClaudeOutput(string output)
@@ -585,7 +345,6 @@ namespace ClaudeCodeWin
 
                 StartButton.IsEnabled = true;
                 StopButton.IsEnabled = false;
-                InputBox.IsEnabled = false;
                 WorkingDirectoryBox.IsEnabled = true;
             });
         }

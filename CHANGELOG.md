@@ -2,6 +2,17 @@
 
 All notable changes to Claude Code for Windows will be documented in this file.
 
+## [0.2.1] - 2024-01-08
+
+### Fixed
+- Fixed terminal duplicate output issue (spinner lines appearing multiple times)
+  - Use Base64 encoding for terminal data transfer to preserve control characters
+- Removed unused bottom input area (terminal now handles all input directly)
+
+### Changed
+- Simplified UI by removing redundant input box (xterm.js handles keyboard input)
+- Cleaner layout with just toolbar and terminal
+
 ## [0.2.0] - 2024-01-08
 
 ### Added
