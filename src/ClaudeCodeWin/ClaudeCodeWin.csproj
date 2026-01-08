@@ -19,7 +19,6 @@
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="System.Management" Version="8.0.0" />
-    <PackageReference Include="Pty.Net" Version="0.1.6-pre" />
   </ItemGroup>
 
   <ItemGroup>

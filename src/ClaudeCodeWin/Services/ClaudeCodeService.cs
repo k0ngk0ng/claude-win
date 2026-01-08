@@ -1,20 +1,18 @@
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text;
-using Pty.Net;
+using ClaudeCodeWin.Native;
 
 namespace ClaudeCodeWin.Services
 {
     /// <summary>
-    /// Claude Code 进程管理服务 - 使用伪终端 (ConPTY)
+    /// Claude Code 进程管理服务 - 使用 Windows ConPTY
     /// </summary>
     public class ClaudeCodeService : IDisposable
     {
-        private IPtyConnection? _pty;
+        private PseudoConsoleSession? _ptySession;
         private readonly EnvironmentService _envService;
         private bool _isRunning;
-        private int? _processId;
         private CancellationTokenSource? _readCts;
         private string? _workingDirectory;
         private string? _claudePath;
@@ -31,7 +29,7 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 启动 Claude Code（使用伪终端）
+        /// 启动 Claude Code（使用 ConPTY）
         /// </summary>
         public async Task<bool> StartAsync(string workingDirectory, string? initialCommand = null)
         {
@@ -78,58 +76,44 @@ namespace ClaudeCodeWin.Services
                 environment["FORCE_COLOR"] = "1";
                 environment["COLORTERM"] = "truecolor";
 
-                // 构建命令行参数
-                var args = new List<string>();
+                // 构建命令行
+                var args = new List<string> { _claudePath };
                 if (_envService.Config.SkipPermissions == true)
                 {
                     args.Add("--dangerously-skip-permissions");
                 }
+                var commandLine = string.Join(" ", args.Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
 
                 if (isDebug)
                 {
                     OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
-                    OnOutput?.Invoke($"[DEBUG] Claude Code 启动 (PTY 模式)");
-                    OnOutput?.Invoke($"[DEBUG] Claude 路径: {_claudePath}");
+                    OnOutput?.Invoke($"[DEBUG] Claude Code 启动 (ConPTY 模式)");
+                    OnOutput?.Invoke($"[DEBUG] 命令行: {commandLine}");
                     OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
-                    OnOutput?.Invoke($"[DEBUG] 参数: {string.Join(" ", args)}");
                     OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
                 }
 
-                // 使用伪终端启动进程
-                var options = new PtyOptions
-                {
-                    Name = "Claude Code",
-                    App = _claudePath,
-                    CommandLine = args.ToArray(),
-                    Cwd = _workingDirectory,
-                    Environment = environment,
-                    Rows = 40,
-                    Cols = 120
-                };
+                // 使用 ConPTY 启动进程
+                _ptySession = ConPty.Create(
+                    commandLine,
+                    _workingDirectory,
+                    environment,
+                    cols: 120,
+                    rows: 40);
 
-                _pty = await PtyProvider.SpawnAsync(options, CancellationToken.None);
-                _processId = _pty.Pid;
                 _isRunning = true;
 
                 if (isDebug)
                 {
-                    OnOutput?.Invoke($"[DEBUG] 进程已启动，PID: {_processId}");
+                    OnOutput?.Invoke($"[DEBUG] 进程已启动，PID: {_ptySession.ProcessId}");
                 }
-
-                // 监听进程退出
-                _pty.ProcessExited += (sender, exitCode) =>
-                {
-                    _isRunning = false;
-                    if (isDebug)
-                    {
-                        OnOutput?.Invoke($"[DEBUG] Claude Code 进程已退出，退出码: {exitCode}");
-                    }
-                    OnProcessExited?.Invoke();
-                };
 
                 // 启动读取输出的任务
                 _readCts = new CancellationTokenSource();
                 _ = ReadOutputAsync(_readCts.Token);
+
+                // 启动进程监控任务
+                _ = MonitorProcessAsync(_readCts.Token);
 
                 return true;
             }
@@ -145,21 +129,58 @@ namespace ClaudeCodeWin.Services
         }
 
         /// <summary>
-        /// 异步读取伪终端输出
+        /// 监控进程退出
         /// </summary>
-        private async Task ReadOutputAsync(CancellationToken cancellationToken)
+        private async Task MonitorProcessAsync(CancellationToken cancellationToken)
         {
-            if (_pty == null) return;
+            if (_ptySession == null) return;
 
-            var buffer = new byte[4096];
-            var decoder = Encoding.UTF8.GetDecoder();
-            var charBuffer = new char[4096];
+            var isDebug = _envService.Config.GuiDebug == true;
 
             try
             {
                 while (!cancellationToken.IsCancellationRequested && _isRunning)
                 {
-                    var bytesRead = await _pty.ReaderStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    if (_ptySession.HasExited)
+                    {
+                        _isRunning = false;
+                        if (isDebug)
+                        {
+                            OnOutput?.Invoke($"[DEBUG] Claude Code 进程已退出，退出码: {_ptySession.ExitCode}");
+                        }
+                        OnProcessExited?.Invoke();
+                        break;
+                    }
+                    await Task.Delay(500, cancellationToken);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                if (isDebug)
+                {
+                    OnError?.Invoke($"[DEBUG] 进程监控异常: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 异步读取终端输出
+        /// </summary>
+        private async Task ReadOutputAsync(CancellationToken cancellationToken)
+        {
+            if (_ptySession == null) return;
+
+            var buffer = new byte[4096];
+            var decoder = Encoding.UTF8.GetDecoder();
+            var charBuffer = new char[4096];
+            var isDebug = _envService.Config.GuiDebug == true;
+
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested && _isRunning)
+                {
+                    var bytesRead = await _ptySession.OutputStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
                     if (bytesRead > 0)
                     {
                         var charCount = decoder.GetChars(buffer, 0, bytesRead, charBuffer, 0);
@@ -186,7 +207,6 @@ namespace ClaudeCodeWin.Services
             }
             catch (Exception ex)
             {
-                var isDebug = _envService.Config.GuiDebug == true;
                 if (isDebug)
                 {
                     OnError?.Invoke($"[DEBUG] 读取输出异常: {ex.Message}");
@@ -266,7 +286,7 @@ namespace ClaudeCodeWin.Services
         /// </summary>
         public async Task SendInputAsync(string input)
         {
-            if (!_isRunning || _pty == null)
+            if (!_isRunning || _ptySession == null)
             {
                 OnError?.Invoke("Claude Code 未运行");
                 return;
@@ -281,10 +301,10 @@ namespace ClaudeCodeWin.Services
                     OnOutput?.Invoke($"[DEBUG] 发送输入: {input}");
                 }
 
-                // 向伪终端发送输入（加上换行符）
+                // 向终端发送输入（加上换行符）
                 var bytes = Encoding.UTF8.GetBytes(input + "\n");
-                await _pty.WriterStream.WriteAsync(bytes, 0, bytes.Length);
-                await _pty.WriterStream.FlushAsync();
+                await _ptySession.InputStream.WriteAsync(bytes, 0, bytes.Length);
+                await _ptySession.InputStream.FlushAsync();
             }
             catch (Exception ex)
             {
@@ -304,7 +324,7 @@ namespace ClaudeCodeWin.Services
         {
             try
             {
-                _pty?.Resize(cols, rows);
+                _ptySession?.Resize((short)cols, (short)rows);
             }
             catch { }
         }
@@ -317,21 +337,21 @@ namespace ClaudeCodeWin.Services
             _isRunning = false;
             _readCts?.Cancel();
 
-            if (_pty != null)
+            if (_ptySession != null)
             {
                 try
                 {
-                    _pty.Kill();
+                    _ptySession.Kill();
                 }
                 catch { }
 
                 try
                 {
-                    _pty.Dispose();
+                    _ptySession.Dispose();
                 }
                 catch { }
 
-                _pty = null;
+                _ptySession = null;
             }
 
             // 额外清理
@@ -347,8 +367,10 @@ namespace ClaudeCodeWin.Services
         /// </summary>
         private void KillRelatedProcesses()
         {
-            if (!_processId.HasValue)
+            if (_ptySession == null)
                 return;
+
+            var pid = _ptySession.ProcessId;
 
             try
             {
@@ -357,7 +379,7 @@ namespace ClaudeCodeWin.Services
                     StartInfo = new ProcessStartInfo
                     {
                         FileName = "taskkill",
-                        Arguments = $"/F /T /PID {_processId.Value}",
+                        Arguments = $"/F /T /PID {pid}",
                         UseShellExecute = false,
                         CreateNoWindow = true,
                         RedirectStandardOutput = true,
@@ -368,8 +390,6 @@ namespace ClaudeCodeWin.Services
                 killProcess.WaitForExit(3000);
             }
             catch { }
-
-            _processId = null;
         }
 
         /// <summary>
