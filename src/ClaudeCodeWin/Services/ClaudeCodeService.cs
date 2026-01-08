@@ -356,6 +356,11 @@ namespace ClaudeCodeWin.Services
         /// </summary>
         public void Stop()
         {
+            if (!_isRunning && _ptySession == null)
+            {
+                return;
+            }
+
             _isRunning = false;
             _readCts?.Cancel();
 
@@ -395,6 +400,9 @@ namespace ClaudeCodeWin.Services
                 KillOrphanedNodeProcesses();
             }
             catch { }
+
+            // 通知 UI 进程已退出
+            OnProcessExited?.Invoke();
         }
 
         /// <summary>

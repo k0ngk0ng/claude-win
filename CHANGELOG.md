@@ -2,6 +2,12 @@
 
 All notable changes to Claude Code for Windows will be documented in this file.
 
+## [0.1.31] - 2024-01-08
+
+### Fixed
+- Stop button now properly updates UI state after stopping Claude Code
+- Added OnProcessExited event trigger when manually stopping
+
 ## [0.1.30] - 2024-01-08
 
 ### Added
