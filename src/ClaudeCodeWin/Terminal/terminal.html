@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Terminal</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1a2e;
+        }
+        #terminal {
+            width: 100%;
+            height: 100%;
+        }
+        .xterm {
+            padding: 8px;
+        }
+        .xterm-viewport {
+            overflow-y: auto !important;
+        }
+        .xterm-viewport::-webkit-scrollbar {
+            width: 10px;
+        }
+        .xterm-viewport::-webkit-scrollbar-track {
+            background: #1a1a2e;
+        }
+        .xterm-viewport::-webkit-scrollbar-thumb {
+            background: #4a4a6a;
+            border-radius: 5px;
+        }
+        .xterm-viewport::-webkit-scrollbar-thumb:hover {
+            background: #6a6a8a;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+
+    <script>
+        // Initialize terminal
+        const term = new Terminal({
+            cursorBlink: true,
+            cursorStyle: 'block',
+            fontSize: 14,
+            fontFamily: 'Cascadia Code, Consolas, Monaco, monospace',
+            theme: {
+                background: '#1a1a2e',
+                foreground: '#eaeaea',
+                cursor: '#eaeaea',
+                cursorAccent: '#1a1a2e',
+                selection: 'rgba(255, 255, 255, 0.3)',
+                black: '#1a1a2e',
+                red: '#ff6b6b',
+                green: '#4ade80',
+                yellow: '#fbbf24',
+                blue: '#60a5fa',
+                magenta: '#c084fc',
+                cyan: '#22d3ee',
+                white: '#eaeaea',
+                brightBlack: '#4a4a6a',
+                brightRed: '#ff8a8a',
+                brightGreen: '#6ee7a0',
+                brightYellow: '#fcd34d',
+                brightBlue: '#93c5fd',
+                brightMagenta: '#d8b4fe',
+                brightCyan: '#67e8f9',
+                brightWhite: '#ffffff'
+            },
+            allowProposedApi: true,
+            scrollback: 10000
+        });
+
+        // Load addons
+        const fitAddon = new FitAddon.FitAddon();
+        const webLinksAddon = new WebLinksAddon.WebLinksAddon();
+
+        term.loadAddon(fitAddon);
+        term.loadAddon(webLinksAddon);
+
+        // Open terminal
+        const container = document.getElementById('terminal');
+        term.open(container);
+        fitAddon.fit();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+            // Notify C# about size change
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage({
+                    type: 'resize',
+                    cols: term.cols,
+                    rows: term.rows
+                });
+            }
+        });
+
+        // Handle keyboard input
+        term.onData((data) => {
+            // Send input to C#
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage({
+                    type: 'input',
+                    data: data
+                });
+            }
+        });
+
+        // Handle binary data (for special keys)
+        term.onBinary((data) => {
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage({
+                    type: 'binary',
+                    data: data
+                });
+            }
+        });
+
+        // API for C# to call
+        window.terminalApi = {
+            // Write data to terminal
+            write: function(data) {
+                term.write(data);
+            },
+
+            // Write line to terminal
+            writeln: function(data) {
+                term.writeln(data);
+            },
+
+            // Clear terminal
+            clear: function() {
+                term.clear();
+            },
+
+            // Reset terminal
+            reset: function() {
+                term.reset();
+            },
+
+            // Focus terminal
+            focus: function() {
+                term.focus();
+            },
+
+            // Get terminal size
+            getSize: function() {
+                return JSON.stringify({ cols: term.cols, rows: term.rows });
+            },
+
+            // Fit terminal to container
+            fit: function() {
+                fitAddon.fit();
+                return JSON.stringify({ cols: term.cols, rows: term.rows });
+            },
+
+            // Scroll to bottom
+            scrollToBottom: function() {
+                term.scrollToBottom();
+            },
+
+            // Set font size
+            setFontSize: function(size) {
+                term.options.fontSize = size;
+                fitAddon.fit();
+            }
+        };
+
+        // Initial fit after a short delay
+        setTimeout(() => {
+            fitAddon.fit();
+            term.focus();
+
+            // Notify C# that terminal is ready
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage({
+                    type: 'ready',
+                    cols: term.cols,
+                    rows: term.rows
+                });
+            }
+        }, 100);
+    </script>
+</body>
+</html>

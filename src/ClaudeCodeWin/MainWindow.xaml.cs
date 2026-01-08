@@ -1,14 +1,15 @@
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ClaudeCodeWin.Services;
 using ClaudeCodeWin.Views;
+using Microsoft.Web.WebView2.Core;
 using Microsoft.Win32;
+using Newtonsoft.Json;
 
 namespace ClaudeCodeWin
 {
@@ -19,6 +20,9 @@ namespace ClaudeCodeWin
         private readonly List<string> _commandHistory = new();
         private int _historyIndex = -1;
         private readonly List<string> _pendingImagePaths = new();
+        private bool _terminalReady = false;
+        private int _terminalCols = 120;
+        private int _terminalRows = 30;
 
         public MainWindow()
         {
@@ -38,12 +42,119 @@ namespace ClaudeCodeWin
             // 显示版本号
             VersionText.Text = GetVersionString();
 
-            // 显示欢迎消息
-            AppendToTerminal("欢迎使用 Claude Code for Windows!\n", Colors.LightGreen);
-            AppendToTerminal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Colors.Gray);
+            // 初始化 WebView2
+            Loaded += async (s, e) => await InitializeWebView2Async();
+        }
 
-            // 异步检查安装状态
-            Loaded += async (s, e) => await CheckInstallationAsync();
+        private async Task InitializeWebView2Async()
+        {
+            try
+            {
+                // 设置用户数据文件夹
+                var userDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "ClaudeCodeWin", "WebView2");
+
+                var env = await CoreWebView2Environment.CreateAsync(
+                    userDataFolder: userDataFolder);
+
+                await TerminalWebView.EnsureCoreWebView2Async(env);
+
+                // 配置 WebView2
+                TerminalWebView.CoreWebView2.Settings.IsScriptEnabled = true;
+                TerminalWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                TerminalWebView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                TerminalWebView.CoreWebView2.Settings.AreDevToolsEnabled = _envService.Config.GuiDebug == true;
+
+                // 处理来自 JavaScript 的消息
+                TerminalWebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+
+                // 加载终端 HTML
+                var html = LoadTerminalHtml();
+                TerminalWebView.CoreWebView2.NavigateToString(html);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"初始化终端失败: {ex.Message}\n\n请确保已安装 WebView2 Runtime。",
+                    "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private string LoadTerminalHtml()
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+            var resourceName = "ClaudeCodeWin.Terminal.terminal.html";
+
+            using var stream = assembly.GetManifestResourceStream(resourceName);
+            if (stream == null)
+            {
+                throw new Exception($"找不到嵌入资源: {resourceName}");
+            }
+
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        }
+
+        private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            try
+            {
+                var message = JsonConvert.DeserializeObject<TerminalMessage>(e.WebMessageAsJson);
+                if (message == null) return;
+
+                switch (message.Type)
+                {
+                    case "ready":
+                        _terminalReady = true;
+                        _terminalCols = message.Cols ?? 120;
+                        _terminalRows = message.Rows ?? 30;
+                        Dispatcher.Invoke(() => OnTerminalReady());
+                        break;
+
+                    case "input":
+                        if (!string.IsNullOrEmpty(message.Data))
+                        {
+                            _ = _claudeService.SendInputRawAsync(message.Data);
+                        }
+                        break;
+
+                    case "resize":
+                        _terminalCols = message.Cols ?? _terminalCols;
+                        _terminalRows = message.Rows ?? _terminalRows;
+                        _claudeService.Resize(_terminalCols, _terminalRows);
+                        break;
+
+                    case "binary":
+                        if (!string.IsNullOrEmpty(message.Data))
+                        {
+                            _ = _claudeService.SendInputRawAsync(message.Data);
+                        }
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"处理 WebView 消息失败: {ex.Message}");
+            }
+        }
+
+        private async void OnTerminalReady()
+        {
+            // 显示欢迎消息
+            await WriteToTerminalAsync("欢迎使用 Claude Code for Windows!\r\n");
+            await WriteToTerminalAsync("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n");
+
+            // 检查安装状态
+            await CheckInstallationAsync();
+        }
+
+        private async Task WriteToTerminalAsync(string text)
+        {
+            if (!_terminalReady || TerminalWebView.CoreWebView2 == null) return;
+
+            // 转义字符串用于 JavaScript
+            var escaped = JsonConvert.SerializeObject(text);
+            await TerminalWebView.CoreWebView2.ExecuteScriptAsync($"window.terminalApi.write({escaped})");
         }
 
         private async Task CheckInstallationAsync()
@@ -54,29 +165,29 @@ namespace ClaudeCodeWin
 
             if (string.IsNullOrEmpty(nodeVersion))
             {
-                AppendToTerminal("✗ Node.js 未安装\n", Colors.Red);
-                AppendToTerminal("  请先安装 Node.js: https://nodejs.org/\n\n", Colors.Yellow);
+                await WriteToTerminalAsync("\x1b[31m✗ Node.js 未安装\x1b[0m\r\n");
+                await WriteToTerminalAsync("\x1b[33m  请先安装 Node.js: https://nodejs.org/\x1b[0m\r\n\r\n");
             }
             else
             {
-                AppendToTerminal($"✓ Node.js {nodeVersion}", Colors.LightGreen);
+                await WriteToTerminalAsync($"\x1b[32m✓ Node.js {nodeVersion}\x1b[0m");
                 if (!string.IsNullOrEmpty(npmVersion))
                 {
-                    AppendToTerminal($" (npm {npmVersion})", Colors.Gray);
+                    await WriteToTerminalAsync($"\x1b[90m (npm {npmVersion})\x1b[0m");
                 }
-                AppendToTerminal("\n", Colors.White);
+                await WriteToTerminalAsync("\r\n");
             }
 
             // 检查 Git Bash
             var gitBashPath = ClaudeCodeService.FindGitBashPath();
             if (string.IsNullOrEmpty(gitBashPath))
             {
-                AppendToTerminal("✗ Git Bash 未找到\n", Colors.Red);
-                AppendToTerminal("  Claude Code 需要 Git Bash，请检查安装\n", Colors.Yellow);
+                await WriteToTerminalAsync("\x1b[31m✗ Git Bash 未找到\x1b[0m\r\n");
+                await WriteToTerminalAsync("\x1b[33m  Claude Code 需要 Git Bash，请检查安装\x1b[0m\r\n");
             }
             else
             {
-                AppendToTerminal($"✓ Git Bash: {gitBashPath}\n", Colors.LightGreen);
+                await WriteToTerminalAsync($"\x1b[32m✓ Git Bash: {gitBashPath}\x1b[0m\r\n");
             }
 
             // 检查 Claude Code
@@ -84,51 +195,54 @@ namespace ClaudeCodeWin
             {
                 if (!string.IsNullOrEmpty(nodeVersion))
                 {
-                    AppendToTerminal("✗ Claude Code 未安装，正在自动安装...\n", Colors.Yellow);
-                    AppendToTerminal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Colors.Gray);
+                    await WriteToTerminalAsync("\x1b[33m✗ Claude Code 未安装，正在自动安装...\x1b[0m\r\n");
+                    await WriteToTerminalAsync("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n");
 
                     // 禁用启动按钮
                     StartButton.IsEnabled = false;
 
-                    var (success, message) = await ClaudeCodeService.InstallClaudeCodeAsync(output =>
+                    var (success, message) = await ClaudeCodeService.InstallClaudeCodeAsync(async output =>
                     {
-                        Dispatcher.Invoke(() => AppendToTerminal(output + "\n", Colors.Gray));
+                        await Dispatcher.InvokeAsync(async () =>
+                        {
+                            await WriteToTerminalAsync($"\x1b[90m{output}\x1b[0m\r\n");
+                        });
                     });
 
-                    AppendToTerminal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Colors.Gray);
+                    await WriteToTerminalAsync("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n");
 
                     if (success)
                     {
-                        AppendToTerminal("✓ " + message + "\n", Colors.LightGreen);
+                        await WriteToTerminalAsync($"\x1b[32m✓ {message}\x1b[0m\r\n");
                     }
                     else
                     {
-                        AppendToTerminal("✗ " + message + "\n", Colors.Red);
-                        AppendToTerminal("  请手动运行: npm install -g @anthropic-ai/claude-code\n", Colors.Yellow);
+                        await WriteToTerminalAsync($"\x1b[31m✗ {message}\x1b[0m\r\n");
+                        await WriteToTerminalAsync("\x1b[33m  请手动运行: npm install -g @anthropic-ai/claude-code\x1b[0m\r\n");
                     }
 
                     StartButton.IsEnabled = true;
                 }
                 else
                 {
-                    AppendToTerminal("✗ Claude Code 未安装（需要先安装 Node.js）\n", Colors.Red);
+                    await WriteToTerminalAsync("\x1b[31m✗ Claude Code 未安装（需要先安装 Node.js）\x1b[0m\r\n");
                 }
             }
             else
             {
-                AppendToTerminal("✓ Claude Code 已就绪\n", Colors.LightGreen);
+                await WriteToTerminalAsync("\x1b[32m✓ Claude Code 已就绪\x1b[0m\r\n");
             }
 
-            AppendToTerminal("\n", Colors.White);
+            await WriteToTerminalAsync("\r\n");
 
-            // 检查 API 密钥或认证令牌（只要设置其中之一即可）
+            // 检查 API 密钥或认证令牌
             if (string.IsNullOrEmpty(_envService.Config.ApiKey) &&
                 string.IsNullOrEmpty(_envService.Config.AuthToken))
             {
-                AppendToTerminal("⚠ 提示: 未配置认证信息，请点击 [⚙ 设置] 配置 API 密钥或认证令牌\n\n", Colors.Yellow);
+                await WriteToTerminalAsync("\x1b[33m⚠ 提示: 未配置认证信息，请点击 [⚙ 设置] 配置 API 密钥或认证令牌\x1b[0m\r\n\r\n");
             }
 
-            AppendToTerminal("点击 [▶ 启动] 按钮开始使用 Claude Code\n", Colors.White);
+            await WriteToTerminalAsync("点击 \x1b[36m[▶ 启动]\x1b[0m 按钮开始使用 Claude Code\r\n");
         }
 
         private void BrowseDirectory_Click(object sender, RoutedEventArgs e)
@@ -159,11 +273,17 @@ namespace ClaudeCodeWin
             InputBox.IsEnabled = true;
             WorkingDirectoryBox.IsEnabled = false;
 
-            AppendToTerminal($"\n启动 Claude Code...\n", Colors.Cyan);
-            AppendToTerminal($"工作目录: {workingDir}\n", Colors.Gray);
-            AppendToTerminal("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n", Colors.Gray);
+            await WriteToTerminalAsync($"\r\n\x1b[36m启动 Claude Code...\x1b[0m\r\n");
+            await WriteToTerminalAsync($"\x1b[90m工作目录: {workingDir}\x1b[0m\r\n");
+            await WriteToTerminalAsync("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n\r\n");
 
-            var success = await _claudeService.StartAsync(workingDir);
+            // 清除欢迎消息，为 TUI 准备干净的屏幕
+            if (TerminalWebView.CoreWebView2 != null)
+            {
+                await TerminalWebView.CoreWebView2.ExecuteScriptAsync("window.terminalApi.clear()");
+            }
+
+            var success = await _claudeService.StartAsync(workingDir, _terminalCols, _terminalRows);
             if (!success)
             {
                 StartButton.IsEnabled = true;
@@ -173,7 +293,11 @@ namespace ClaudeCodeWin
             }
             else
             {
-                InputBox.Focus();
+                // 聚焦到终端
+                if (TerminalWebView.CoreWebView2 != null)
+                {
+                    await TerminalWebView.CoreWebView2.ExecuteScriptAsync("window.terminalApi.focus()");
+                }
             }
         }
 
@@ -195,11 +319,10 @@ namespace ClaudeCodeWin
             {
                 if (!_claudeService.IsRunning)
                 {
-                    AppendToTerminal($"⚠ 请先启动 Claude Code\n", Colors.Yellow);
+                    await WriteToTerminalAsync("\x1b[33m⚠ 请先启动 Claude Code\x1b[0m\r\n");
                     return;
                 }
 
-                AppendToTerminal($"> {command}\n", Colors.LightBlue);
                 _commandHistory.Add(command);
                 _historyIndex = -1;
                 await _claudeService.SendInputAsync(command);
@@ -263,7 +386,7 @@ namespace ClaudeCodeWin
                 panel.Children.Add(new TextBlock
                 {
                     Text = fileName.Length > 20 ? fileName.Substring(0, 17) + "..." : fileName,
-                    Foreground = new SolidColorBrush(Colors.White),
+                    Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White),
                     VerticalAlignment = VerticalAlignment.Center,
                     FontSize = 11
                 });
@@ -275,8 +398,8 @@ namespace ClaudeCodeWin
                     FontSize = 10,
                     Padding = new Thickness(4, 0, 4, 0),
                     Margin = new Thickness(4, 0, 0, 0),
-                    Background = Brushes.Transparent,
-                    Foreground = new SolidColorBrush(Colors.Gray),
+                    Background = System.Windows.Media.Brushes.Transparent,
+                    Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray),
                     BorderThickness = new Thickness(0),
                     Cursor = Cursors.Hand,
                     Tag = imagePath
@@ -331,7 +454,7 @@ namespace ClaudeCodeWin
                    ext == ".gif" || ext == ".bmp" || ext == ".webp";
         }
 
-        private void PasteImageFromClipboard()
+        private async void PasteImageFromClipboard()
         {
             try
             {
@@ -353,11 +476,11 @@ namespace ClaudeCodeWin
                 }
 
                 AddImageAttachment(tempPath);
-                AppendToTerminal($"📋 已粘贴剪贴板图片\n", Colors.Gray);
+                await WriteToTerminalAsync("\x1b[90m📋 已粘贴剪贴板图片\x1b[0m\r\n");
             }
             catch (Exception ex)
             {
-                AppendToTerminal($"⚠ 粘贴图片失败: {ex.Message}\n", Colors.Yellow);
+                await WriteToTerminalAsync($"\x1b[33m⚠ 粘贴图片失败: {ex.Message}\x1b[0m\r\n");
             }
         }
 
@@ -425,22 +548,12 @@ namespace ClaudeCodeWin
             {
                 foreach (var imagePath in _pendingImagePaths)
                 {
-                    // Claude Code 支持直接发送图片路径
                     messageToSend += $" {imagePath}";
                 }
-
-                // 显示输入（包含图片信息）
-                AppendToTerminal($"> {input}", Colors.LightBlue);
-                AppendToTerminal($" [📎 {_pendingImagePaths.Count} 张图片]\n", Colors.Gray);
 
                 // 清除附件
                 _pendingImagePaths.Clear();
                 UpdateAttachmentPreview();
-            }
-            else
-            {
-                // 显示输入
-                AppendToTerminal($"> {input}\n", Colors.LightBlue);
             }
 
             InputBox.Text = "";
@@ -449,79 +562,32 @@ namespace ClaudeCodeWin
 
         private void OnClaudeOutput(string output)
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.InvokeAsync(async () =>
             {
-                AppendToTerminal(output + "\n", Colors.White);
+                await WriteToTerminalAsync(output);
             });
         }
 
         private void OnClaudeError(string error)
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.InvokeAsync(async () =>
             {
-                AppendToTerminal(error + "\n", Colors.OrangeRed);
+                await WriteToTerminalAsync($"\x1b[31m{error}\x1b[0m");
             });
         }
 
         private void OnClaudeExited()
         {
-            Dispatcher.Invoke(() =>
+            Dispatcher.InvokeAsync(async () =>
             {
-                AppendToTerminal("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", Colors.Gray);
-                AppendToTerminal("Claude Code 已退出\n", Colors.Yellow);
+                await WriteToTerminalAsync("\r\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\r\n");
+                await WriteToTerminalAsync("\x1b[33mClaude Code 已退出\x1b[0m\r\n");
 
                 StartButton.IsEnabled = true;
                 StopButton.IsEnabled = false;
                 InputBox.IsEnabled = false;
                 WorkingDirectoryBox.IsEnabled = true;
             });
-        }
-
-        private void AppendToTerminal(string text, Color color)
-        {
-            if (string.IsNullOrEmpty(text))
-            {
-                // 空文本，添加一个空行
-                var emptyParagraph = new Paragraph();
-                TerminalOutput.Document.Blocks.Add(emptyParagraph);
-                TerminalScrollViewer.ScrollToEnd();
-                return;
-            }
-
-            // 按换行符分割文本
-            var lines = text.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
-
-            for (int i = 0; i < lines.Length; i++)
-            {
-                var line = lines[i];
-
-                // 获取或创建段落
-                var paragraph = TerminalOutput.Document.Blocks.LastBlock as Paragraph;
-                if (paragraph == null)
-                {
-                    paragraph = new Paragraph { Margin = new Thickness(0) };
-                    TerminalOutput.Document.Blocks.Add(paragraph);
-                }
-
-                if (!string.IsNullOrEmpty(line))
-                {
-                    var run = new Run(line)
-                    {
-                        Foreground = new SolidColorBrush(color)
-                    };
-                    paragraph.Inlines.Add(run);
-                }
-
-                // 如果不是最后一行，创建新段落
-                if (i < lines.Length - 1)
-                {
-                    var newParagraph = new Paragraph { Margin = new Thickness(0) };
-                    TerminalOutput.Document.Blocks.Add(newParagraph);
-                }
-            }
-
-            // 自动滚动到底部
-            TerminalScrollViewer.ScrollToEnd();
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -554,17 +620,14 @@ namespace ClaudeCodeWin
 
         /// <summary>
         /// 获取版本字符串
-        /// 优先使用 InformationalVersion（包含 git tag），否则使用 AssemblyVersion
         /// </summary>
         private static string GetVersionString()
         {
             var assembly = Assembly.GetExecutingAssembly();
 
-            // 尝试获取 InformationalVersion（可包含 git tag 或 commit）
             var infoVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
             if (!string.IsNullOrEmpty(infoVersion))
             {
-                // 移除可能的 +buildmetadata 部分，只保留版本号
                 var plusIndex = infoVersion.IndexOf('+');
                 if (plusIndex > 0)
                 {
@@ -573,7 +636,6 @@ namespace ClaudeCodeWin
                 return $"v{infoVersion}";
             }
 
-            // 回退到 AssemblyVersion
             var version = assembly.GetName().Version;
             if (version != null)
             {
@@ -582,5 +644,23 @@ namespace ClaudeCodeWin
 
             return "";
         }
+    }
+
+    /// <summary>
+    /// 终端消息结构
+    /// </summary>
+    public class TerminalMessage
+    {
+        [JsonProperty("type")]
+        public string Type { get; set; } = "";
+
+        [JsonProperty("data")]
+        public string? Data { get; set; }
+
+        [JsonProperty("cols")]
+        public int? Cols { get; set; }
+
+        [JsonProperty("rows")]
+        public int? Rows { get; set; }
     }
 }

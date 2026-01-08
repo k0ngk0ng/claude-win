@@ -2,6 +2,25 @@
 
 All notable changes to Claude Code for Windows will be documented in this file.
 
+## [0.1.32] - 2024-01-08
+
+### Added
+- **True terminal emulator with xterm.js** - Full TUI support!
+  - Arrow key navigation works
+  - Proper cursor control and screen refresh
+  - All ANSI escape sequences supported
+  - WebView2 + xterm.js integration
+- Real-time terminal resize support
+
+### Changed
+- Replaced RichTextBox with WebView2-based terminal
+- Terminal now receives raw PTY output (xterm.js handles rendering)
+- Input directly from terminal (no need for separate input box for TUI)
+
+### Fixed
+- TUI interfaces now render and interact correctly
+- Theme selection and other interactive prompts work properly
+
 ## [0.1.31] - 2024-01-08
 
 ### Fixed

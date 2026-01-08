@@ -31,7 +31,7 @@ namespace ClaudeCodeWin.Services
         /// <summary>
         /// 启动 Claude Code（使用 ConPTY）
         /// </summary>
-        public async Task<bool> StartAsync(string workingDirectory, string? initialCommand = null)
+        public async Task<bool> StartAsync(string workingDirectory, int cols = 120, int rows = 30, string? initialCommand = null)
         {
             if (_isRunning)
             {
@@ -120,8 +120,8 @@ namespace ClaudeCodeWin.Services
                     commandLine,
                     _workingDirectory,
                     environment,
-                    cols: 120,
-                    rows: 40);
+                    cols: (short)cols,
+                    rows: (short)rows);
 
                 _isRunning = true;
 
@@ -208,9 +208,7 @@ namespace ClaudeCodeWin.Services
                         var charCount = decoder.GetChars(buffer, 0, bytesRead, charBuffer, 0);
                         var text = new string(charBuffer, 0, charCount);
 
-                        // 处理 ANSI 转义序列（简单过滤，保留文本）
-                        text = ProcessAnsiOutput(text);
-
+                        // 直接传递原始输出，让 xterm.js 处理 ANSI 序列
                         if (!string.IsNullOrEmpty(text))
                         {
                             OnOutput?.Invoke(text);
@@ -336,6 +334,28 @@ namespace ClaudeCodeWin.Services
                     OnError?.Invoke($"[DEBUG] 异常类型: {ex.GetType().Name}");
                     OnError?.Invoke($"[DEBUG] 堆栈跟踪:\n{ex.StackTrace}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// 发送原始输入到 Claude Code（不添加换行符，用于 xterm.js 键盘输入）
+        /// </summary>
+        public async Task SendInputRawAsync(string input)
+        {
+            if (!_isRunning || _ptySession == null)
+            {
+                return;
+            }
+
+            try
+            {
+                var bytes = Encoding.UTF8.GetBytes(input);
+                await _ptySession.InputStream.WriteAsync(bytes, 0, bytes.Length);
+                await _ptySession.InputStream.FlushAsync();
+            }
+            catch
+            {
+                // 静默处理错误
             }
         }
 
