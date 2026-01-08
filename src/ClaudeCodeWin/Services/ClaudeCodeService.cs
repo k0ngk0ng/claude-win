@@ -98,21 +98,21 @@ namespace ClaudeCodeWin.Services
 
                 if (isDebug)
                 {
-                    OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
-                    OnOutput?.Invoke($"[DEBUG] Claude Code 启动 (ConPTY 模式)");
-                    OnOutput?.Invoke($"[DEBUG] Node.js: {nodePath}");
-                    OnOutput?.Invoke($"[DEBUG] CLI.js: {cliJsPath}");
-                    OnOutput?.Invoke($"[DEBUG] 命令行: {commandLine}");
-                    OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}");
+                    OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════\r\n");
+                    OnOutput?.Invoke($"[DEBUG] Claude Code 启动 (ConPTY 模式)\r\n");
+                    OnOutput?.Invoke($"[DEBUG] Node.js: {nodePath}\r\n");
+                    OnOutput?.Invoke($"[DEBUG] CLI.js: {cliJsPath}\r\n");
+                    OnOutput?.Invoke($"[DEBUG] 命令行: {commandLine}\r\n");
+                    OnOutput?.Invoke($"[DEBUG] 工作目录: {_workingDirectory}\r\n");
                     if (environment.TryGetValue("CLAUDE_CODE_GIT_BASH_PATH", out var gitBashPath))
                     {
-                        OnOutput?.Invoke($"[DEBUG] Git Bash: {gitBashPath}");
+                        OnOutput?.Invoke($"[DEBUG] Git Bash: {gitBashPath}\r\n");
                     }
                     else
                     {
-                        OnOutput?.Invoke($"[DEBUG] Git Bash: 未设置!");
+                        OnOutput?.Invoke($"[DEBUG] Git Bash: 未设置!\r\n");
                     }
-                    OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════");
+                    OnOutput?.Invoke($"[DEBUG] ═══════════════════════════════════════════════\r\n");
                 }
 
                 // 使用 ConPTY 启动进程
@@ -127,7 +127,7 @@ namespace ClaudeCodeWin.Services
 
                 if (isDebug)
                 {
-                    OnOutput?.Invoke($"[DEBUG] 进程已启动，PID: {_ptySession.ProcessId}");
+                    OnOutput?.Invoke($"[DEBUG] 进程已启动，PID: {_ptySession.ProcessId}\r\n");
                 }
 
                 // 启动读取输出的任务
@@ -168,7 +168,7 @@ namespace ClaudeCodeWin.Services
                         _isRunning = false;
                         if (isDebug)
                         {
-                            OnOutput?.Invoke($"[DEBUG] Claude Code 进程已退出，退出码: {_ptySession.ExitCode}");
+                            OnOutput?.Invoke($"[DEBUG] Claude Code 进程已退出，退出码: {_ptySession.ExitCode}\r\n");
                         }
                         OnProcessExited?.Invoke();
                         break;
@@ -318,7 +318,7 @@ namespace ClaudeCodeWin.Services
             {
                 if (isDebug)
                 {
-                    OnOutput?.Invoke($"[DEBUG] 发送输入: {input}");
+                    OnOutput?.Invoke($"[DEBUG] 发送输入: {input}\r\n");
                 }
 
                 // 向终端发送输入（加上换行符）

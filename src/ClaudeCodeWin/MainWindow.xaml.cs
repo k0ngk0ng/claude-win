@@ -266,6 +266,7 @@ namespace ClaudeCodeWin
             StartButton.IsEnabled = false;
             StopButton.IsEnabled = true;
             WorkingDirectoryBox.IsEnabled = false;
+            BrowseButton.IsEnabled = false;
 
             await WriteToTerminalAsync($"\r\n\x1b[36m启动 Claude Code...\x1b[0m\r\n");
             await WriteToTerminalAsync($"\x1b[90m工作目录: {workingDir}\x1b[0m\r\n");
@@ -283,6 +284,7 @@ namespace ClaudeCodeWin
                 StartButton.IsEnabled = true;
                 StopButton.IsEnabled = false;
                 WorkingDirectoryBox.IsEnabled = true;
+                BrowseButton.IsEnabled = true;
             }
             else
             {
@@ -346,6 +348,7 @@ namespace ClaudeCodeWin
                 StartButton.IsEnabled = true;
                 StopButton.IsEnabled = false;
                 WorkingDirectoryBox.IsEnabled = true;
+                BrowseButton.IsEnabled = true;
             });
         }
 

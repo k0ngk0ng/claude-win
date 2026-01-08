@@ -51,7 +51,7 @@
                              Width="350"
                              Style="{StaticResource ModernTextBox}"
                              VerticalContentAlignment="Center"/>
-                    <Button Content="..." Width="40" Margin="4,0,0,0"
+                    <Button x:Name="BrowseButton" Content="..." Width="40" Margin="4,0,0,0"
                             Style="{StaticResource ModernButton}"
                             Click="BrowseDirectory_Click"/>
                 </StackPanel>
