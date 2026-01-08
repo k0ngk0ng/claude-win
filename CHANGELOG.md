@@ -2,7 +2,7 @@
 
 All notable changes to Claude Code for Windows will be documented in this file.
 
-## [0.1.32] - 2024-01-08
+## [0.2.0] - 2024-01-08
 
 ### Added
 - **True terminal emulator with xterm.js** - Full TUI support!
@@ -20,6 +20,7 @@ All notable changes to Claude Code for Windows will be documented in this file.
 ### Fixed
 - TUI interfaces now render and interact correctly
 - Theme selection and other interactive prompts work properly
+- Stop button now properly updates UI state
 
 ## [0.1.31] - 2024-01-08
 
