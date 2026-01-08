@@ -13,6 +13,7 @@ All notable changes to Claude Code for Windows will be documented in this file.
 - Release notes now include changelog and features from markdown files
 - npm packages now install to user AppData directory (avoids Program Files EPERM errors)
 - Improved process cleanup on application close
+- Installer now silently handles process checks (no "process not found" messages)
 
 ### Fixed
 - npm EPERM error when auto-installing Claude Code CLI

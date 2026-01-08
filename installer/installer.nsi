@@ -65,17 +65,21 @@ RequestExecutionLevel admin
 ;--------------------------------
 ; Functions
 
-; Check if application is running and kill it
+; Check if application is running and kill it (silently)
 Function CheckAndKillProcess
-    ; Try to find and kill the process
-    nsExec::ExecToLog 'taskkill /F /IM ${PRODUCT_EXE}'
+    ; Try to find and kill the process silently (don't show "process not found" errors)
+    nsExec::ExecToStack 'taskkill /F /IM ${PRODUCT_EXE}'
+    Pop $0  ; Return value
+    Pop $1  ; Output (discard)
     ; Wait a moment for process to terminate
     Sleep 500
 FunctionEnd
 
-; Uninstall version - check and kill process
+; Uninstall version - check and kill process (silently)
 Function un.CheckAndKillProcess
-    nsExec::ExecToLog 'taskkill /F /IM ${PRODUCT_EXE}'
+    nsExec::ExecToStack 'taskkill /F /IM ${PRODUCT_EXE}'
+    Pop $0
+    Pop $1
     Sleep 500
 FunctionEnd
 
