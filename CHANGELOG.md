@@ -6,19 +6,19 @@ All notable changes to Claude Code for Windows will be documented in this file.
 
 ### Added
 - CHANGELOG.md for version history tracking
-- FEATURES.md for release notes automation
 - User npm directory installation to avoid permission issues
 
 ### Changed
-- Release notes now include changelog and features from markdown files
 - npm packages now install to user AppData directory (avoids Program Files EPERM errors)
 - Improved process cleanup on application close
 - Installer now silently handles process checks (no "process not found" messages)
+- Image upload button style improved
 
 ### Fixed
 - npm EPERM error when auto-installing Claude Code CLI
 - Orphaned node processes not being killed on close
 - Process tree cleanup now correctly tracks PID before disposal
+- "node is not recognized" error when running Claude Code (now uses node.exe directly)
 
 ## [0.1.23] - 2024-01-08
 
